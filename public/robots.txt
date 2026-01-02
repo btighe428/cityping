@@ -1,0 +1,26 @@
+# robots.txt for ParkPing (parkping.net)
+
+# Allow all crawlers to access public pages
+User-agent: *
+Allow: /
+
+# Block access to API routes and admin areas
+Disallow: /api/
+Disallow: /dashboard/
+Disallow: /m/
+
+# Block access to internal files
+Disallow: /*.json$
+Disallow: /*_next/
+
+# Allow access to key SEO pages
+Allow: /nyc-alternate-side-parking-guide
+Allow: /asp-suspension-calendar
+Allow: /nyc-parking-rules
+Allow: /snow-emergency-parking-nyc
+Allow: /faq
+Allow: /terms
+Allow: /privacy
+
+# Sitemap location
+Sitemap: https://parkping.net/sitemap.xml

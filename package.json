@@ -1,0 +1,54 @@
+{
+  "name": "parkping",
+  "version": "0.1.0",
+  "private": true,
+  "prisma": {
+    "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "npx prisma generate && next build",
+    "start": "next start",
+    "lint": "eslint",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "db:seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts",
+    "db:seed:modules": "npx tsx prisma/seeds/index.ts",
+    "db:studio": "prisma studio",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "migrate:users": "npx tsx scripts/migrate-users-to-nycping.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.1",
+    "cheerio": "^1.1.2",
+    "crypto-js": "^4.2.0",
+    "dotenv": "^17.2.3",
+    "luxon": "^3.7.2",
+    "next": "16.0.10",
+    "node-ical": "^0.22.1",
+    "react": "19.2.1",
+    "react-dom": "19.2.1",
+    "resend": "^6.6.0",
+    "stripe": "^20.0.0",
+    "twilio": "^5.10.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/crypto-js": "^4.2.2",
+    "@types/jest": "^30.0.0",
+    "@types/luxon": "^3.7.1",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.0.10",
+    "jest": "^30.2.0",
+    "prisma": "^6.19.1",
+    "tailwindcss": "^4",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5"
+  }
+}

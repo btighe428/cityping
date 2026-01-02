@@ -1,0 +1,407 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================================================
+// ACCOUNTS & AUTHENTICATION
+// ============================================================================
+
+model Account {
+  id               String   @id @default(uuid()) @db.Uuid
+  stripeCustomerId String   @unique @map("stripe_customer_id")
+  email            String?
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  phones        Phone[]
+  subscriptions Subscription[]
+
+  @@map("accounts")
+}
+
+model Phone {
+  id             String         @id @default(uuid()) @db.Uuid
+  accountId      String         @map("account_id") @db.Uuid
+  e164           String         @unique
+  smsOptInStatus SmsOptInStatus @default(pending) @map("sms_opt_in_status")
+  smsOptInAt     DateTime?      @map("sms_opt_in_at") @db.Timestamptz
+  smsOptInSource String?        @map("sms_opt_in_source")
+  smsOptInIp     String?        @map("sms_opt_in_ip") @db.Inet
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  account      Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  cityAlerts   PhoneCityAlert[]
+  messages     MessageOutbox[]
+  manageTokens ManageToken[]
+
+  @@map("phones")
+}
+
+enum SmsOptInStatus {
+  pending
+  confirmed
+  revoked
+
+  @@map("sms_opt_in_status")
+}
+
+model Subscription {
+  id                   String    @id @default(uuid()) @db.Uuid
+  accountId            String    @map("account_id") @db.Uuid
+  stripeSubscriptionId String    @unique @map("stripe_subscription_id")
+  status               String // active, trialing, past_due, canceled, unpaid, etc.
+  currentPeriodEnd     DateTime? @map("current_period_end") @db.Timestamptz
+  cancelAtPeriodEnd    Boolean   @default(false) @map("cancel_at_period_end")
+  priceId              String    @map("price_id")
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+// ============================================================================
+// CITIES & ALERTS
+// ============================================================================
+
+model City {
+  id                   String   @id @default(uuid()) @db.Uuid
+  slug                 String   @unique
+  name                 String
+  timezone             String // e.g., "America/New_York"
+  defaultSendTimeLocal String   @default("18:00") @map("default_send_time_local")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  phoneAlerts      PhoneCityAlert[]
+  calendarSources  CalendarSource[]
+  suspensionEvents SuspensionEvent[]
+  messages         MessageOutbox[]
+
+  @@map("cities")
+}
+
+model PhoneCityAlert {
+  phoneId                String   @map("phone_id") @db.Uuid
+  cityId                 String   @map("city_id") @db.Uuid
+  enabled                Boolean  @default(true)
+  notifySms              Boolean  @default(true) @map("notify_sms")
+  notifyEmail            Boolean  @default(true) @map("notify_email")
+  preferredSendTimeLocal String?  @map("preferred_send_time_local")
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  phone Phone @relation(fields: [phoneId], references: [id], onDelete: Cascade)
+  city  City  @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  @@id([phoneId, cityId])
+  @@map("phone_city_alerts")
+}
+
+// ============================================================================
+// CALENDAR & EVENTS
+// ============================================================================
+
+model CalendarSource {
+  id            String    @id @default(uuid()) @db.Uuid
+  cityId        String    @map("city_id") @db.Uuid
+  sourceType    String    @default("ics") @map("source_type") // "ics"
+  discoverUrl   String?   @map("discover_url")
+  sourceUrl     String    @map("source_url")
+  year          Int?
+  etag          String?
+  lastModified  String?   @map("last_modified")
+  lastFetchedAt DateTime? @map("last_fetched_at") @db.Timestamptz
+  lastParsedAt  DateTime? @map("last_parsed_at") @db.Timestamptz
+  rawHash       String?   @map("raw_hash")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  city   City              @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  events SuspensionEvent[]
+
+  @@map("calendar_sources")
+}
+
+model SuspensionEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  cityId     String   @map("city_id") @db.Uuid
+  sourceId   String   @map("source_id") @db.Uuid
+  eventUid   String?  @map("event_uid")
+  summary    String? // Holiday name/reason
+  date       DateTime @db.Date // One row per suspension day
+  rawStart   String?  @map("raw_start")
+  rawEnd     String?  @map("raw_end")
+  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz
+
+  city   City           @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  source CalendarSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([cityId, date, summary])
+  @@map("suspension_events")
+}
+
+// ============================================================================
+// MESSAGING
+// ============================================================================
+
+model MessageOutbox {
+  id               String        @id @default(uuid()) @db.Uuid
+  phoneId          String        @map("phone_id") @db.Uuid
+  cityId           String?       @map("city_id") @db.Uuid
+  type             MessageType
+  targetDate       DateTime?     @map("target_date") @db.Date // For reminders
+  body             String
+  twilioMessageSid String?       @map("twilio_message_sid")
+  status           MessageStatus @default(queued)
+  errorCode        String?       @map("error_code")
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  phone Phone @relation(fields: [phoneId], references: [id], onDelete: Cascade)
+  city  City? @relation(fields: [cityId], references: [id], onDelete: SetNull)
+
+  @@unique([phoneId, cityId, type, targetDate])
+  @@map("message_outbox")
+}
+
+enum MessageType {
+  opt_in
+  reminder
+  help
+  system
+  monthly_recap
+
+  @@map("message_type")
+}
+
+enum MessageStatus {
+  queued
+  sent
+  delivered
+  failed
+
+  @@map("message_status")
+}
+
+// ============================================================================
+// WEBHOOKS & TOKENS
+// ============================================================================
+
+model WebhookEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  provider    String // "stripe" or "twilio"
+  eventId     String    @map("event_id")
+  payload     Json
+  receivedAt  DateTime  @default(now()) @map("received_at") @db.Timestamptz
+  processedAt DateTime? @map("processed_at") @db.Timestamptz
+
+  @@unique([provider, eventId])
+  @@map("webhook_events")
+}
+
+model ManageToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  phoneId   String    @map("phone_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+
+  phone Phone @relation(fields: [phoneId], references: [id], onDelete: Cascade)
+
+  @@map("manage_tokens")
+}
+
+// ============================================================================
+// USERS (Unified Model - coexists with legacy Phone/Account during migration)
+// ============================================================================
+
+/// User tier classification determining notification channels and timing.
+/// Free: Email digest with 24-hour delay
+/// Premium: SMS + Email with instant delivery
+enum UserTier {
+  free
+  premium
+
+  @@map("user_tier")
+}
+
+/// Unified user model for NYCPing multi-module architecture.
+/// Consolidates identity, subscription tier, and inferred location profile.
+/// Coexists with legacy Phone/Account models during migration period.
+model User {
+  id               String   @id @default(cuid())
+  phone            String?  @unique // E.164 format, optional for free tier
+  email            String   @unique
+  zipCode          String   @map("zip_code")
+  tier             UserTier @default(free)
+  stripeCustomerId String?  @unique @map("stripe_customer_id")
+
+  // Inferred profile (populated by zip-to-geo service)
+  inferredNeighborhood String?  @map("inferred_neighborhood")
+  inferredSubwayLines  String[] @map("inferred_subway_lines")
+  inferredHasParking   Boolean  @default(false) @map("inferred_has_parking")
+
+  // Opt-in tracking
+  smsOptInStatus SmsOptInStatus @default(pending) @map("sms_opt_in_status")
+  smsOptInAt     DateTime?      @map("sms_opt_in_at") @db.Timestamptz
+  emailOptInAt   DateTime       @default(now()) @map("email_opt_in_at") @db.Timestamptz
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  preferences   UserModulePreference[]
+  notifications NotificationOutbox[]
+
+  @@map("users")
+}
+
+// ============================================================================
+// NYCPING MULTI-MODULE ARCHITECTURE
+// ============================================================================
+
+/// Represents a top-level feature module in NYCPing (parking, transit, events, etc.)
+/// Each module groups related alert sources and user preferences.
+model Module {
+  id          String @id // "parking", "transit", "events", "housing", "food", "deals"
+  name        String // "Parking & Driving"
+  description String
+  icon        String // Emoji identifier
+  sortOrder   Int    @map("sort_order")
+
+  sources     AlertSource[]
+  preferences UserModulePreference[]
+
+  @@map("modules")
+}
+
+/// Junction table linking users to modules with per-module preferences.
+/// Supports both explicit opt-in/out and inferred preferences based on user profile.
+/// Settings JSON allows module-specific configuration (e.g., transit line filters).
+model UserModulePreference {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  moduleId   String   @map("module_id")
+  enabled    Boolean  @default(true)
+  settings   Json     @default("{}")
+  isInferred Boolean  @default(true) @map("is_inferred")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module Module @relation(fields: [moduleId], references: [id])
+
+  @@unique([userId, moduleId])
+  @@map("user_module_preferences")
+}
+
+/// An individual data source within a module that generates alerts.
+/// Examples: ASP calendar, MTA subway status, 311 street closures.
+model AlertSource {
+  id           String          @id @default(cuid())
+  moduleId     String          @map("module_id")
+  slug         String          @unique // "asp-calendar", "mta-subway"
+  name         String // "Alternate Side Parking"
+  frequency    SourceFrequency
+  enabled      Boolean         @default(true)
+  config       Json            @default("{}")
+  lastPolledAt DateTime?       @map("last_polled_at") @db.Timestamptz
+  lastEventAt  DateTime?       @map("last_event_at") @db.Timestamptz
+
+  module Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  events AlertEvent[]
+
+  @@map("alert_sources")
+}
+
+/// Individual alert events ingested from various sources.
+/// Each event represents a single notification-worthy occurrence (e.g., ASP suspension, subway delay).
+model AlertEvent {
+  id            String    @id @default(cuid())
+  sourceId      String    @map("source_id")
+  externalId    String?   @map("external_id") // Dedup key from source
+  title         String
+  body          String?
+  startsAt      DateTime? @map("starts_at") @db.Timestamptz
+  endsAt        DateTime? @map("ends_at") @db.Timestamptz
+  neighborhoods String[] // For geo-matching
+  metadata      Json      @default("{}")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt     DateTime? @map("expires_at") @db.Timestamptz
+
+  source        AlertSource          @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  notifications NotificationOutbox[]
+
+  @@unique([sourceId, externalId])
+  @@index([sourceId, createdAt])
+  @@index([startsAt])
+  @@map("alert_events")
+}
+
+/// Polling frequency classification for alert sources.
+/// Determines how often the system checks for new data.
+enum SourceFrequency {
+  realtime // Poll every 60-90 sec (e.g., subway delays)
+  hourly // Cron hourly (e.g., weather updates)
+  daily // Cron daily (e.g., ASP calendar sync)
+
+  @@map("source_frequency")
+}
+
+// ============================================================================
+// NOTIFICATION OUTBOX (Transactional Outbox Pattern)
+// ============================================================================
+
+/// Delivery channel for notifications.
+/// SMS available for premium tier; email for all users.
+enum NotificationChannel {
+  sms
+  email
+
+  @@map("notification_channel")
+}
+
+/// Lifecycle status of a notification in the outbox.
+/// pending: Awaiting send at scheduledFor time
+/// sent: Successfully delivered to provider
+/// failed: Delivery failed (retries exhausted or permanent error)
+/// skipped: User preference changed or event expired before send
+enum NotificationStatus {
+  pending
+  sent
+  failed
+  skipped
+
+  @@map("notification_status")
+}
+
+/// Transactional outbox for reliable notification delivery.
+/// Implements exactly-once semantics via unique constraint on (user, event, channel).
+/// Scheduler polls for pending notifications where scheduledFor <= now().
+/// Supports tier-based timing: premium gets instant, free gets 24h delay.
+model NotificationOutbox {
+  id           String              @id @default(cuid())
+  userId       String              @map("user_id")
+  eventId      String              @map("event_id")
+  channel      NotificationChannel
+  scheduledFor DateTime            @map("scheduled_for") @db.Timestamptz
+  sentAt       DateTime?           @map("sent_at") @db.Timestamptz
+  status       NotificationStatus  @default(pending)
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event AlertEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId, channel])
+  @@index([status, scheduledFor])
+  @@map("notification_outbox")
+}
