@@ -2,6 +2,7 @@
 import { PrismaClient } from "@prisma/client";
 import { seedModules } from "./modules";
 import { seedAlertSources } from "./sources";
+import { seedEvergreenEvents } from "./evergreen-events";
 
 const prisma = new PrismaClient();
 
@@ -10,6 +11,7 @@ async function main() {
 
   await seedModules();
   await seedAlertSources();
+  await seedEvergreenEvents();
 
   console.log("✅ Seed complete!");
 }

@@ -2,21 +2,15 @@
 
 import { useState } from 'react'
 
-// Valid NYC zip code prefixes (Manhattan, Brooklyn, Queens, Bronx, Staten Island)
-const NYC_ZIP_PREFIXES = [
-  '100', '101', '102', '103', '104', // Manhattan
-  '112', '113', '114', // Brooklyn
-  '110', '111', '113', '114', '116', // Queens
-  '104', '105', // Bronx
-  '103', // Staten Island
+// Borough options with icons
+const BOROUGHS = [
+  { value: '', label: 'Select your borough', icon: '' },
+  { value: 'manhattan', label: 'Manhattan', icon: '🏙️' },
+  { value: 'brooklyn', label: 'Brooklyn', icon: '🌉' },
+  { value: 'queens', label: 'Queens', icon: '✈️' },
+  { value: 'bronx', label: 'The Bronx', icon: '🏟️' },
+  { value: 'staten_island', label: 'Staten Island', icon: '🛳️' },
 ]
-
-// Validate NYC zip code
-function isValidNYCZip(zip: string): boolean {
-  if (!/^\d{5}$/.test(zip)) return false
-  // Check if starts with any NYC prefix
-  return NYC_ZIP_PREFIXES.some(prefix => zip.startsWith(prefix))
-}
 
 // Validate email
 function isValidEmail(email: string): boolean {
@@ -25,28 +19,17 @@ function isValidEmail(email: string): boolean {
 }
 
 export default function ZipCodeSignupForm() {
-  const [zipCode, setZipCode] = useState('')
+  const [borough, setBorough] = useState('')
   const [email, setEmail] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const handleZipChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, '').slice(0, 5)
-    setZipCode(value)
-    setError('')
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Zip code is required
-    if (!zipCode || zipCode.length !== 5) {
-      setError('Please enter your 5-digit NYC zip code')
-      return
-    }
-
-    if (!isValidNYCZip(zipCode)) {
-      setError('Please enter a valid NYC zip code')
+    // Borough is required
+    if (!borough) {
+      setError('Please select your borough')
       return
     }
 
@@ -69,7 +52,7 @@ export default function ZipCodeSignupForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          zipCode,
+          borough,
           email,
         }),
       })
@@ -92,22 +75,23 @@ export default function ZipCodeSignupForm() {
     <div className="w-full max-w-md mx-auto">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="zipCode" className="block text-sm font-medium text-[var(--navy-600)] mb-2">
-            Your NYC Zip Code
+          <label htmlFor="borough" className="block text-sm font-medium text-[var(--navy-600)] mb-2">
+            Your Borough
           </label>
-          <input
-            type="text"
-            id="zipCode"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={zipCode}
-            onChange={handleZipChange}
-            placeholder="10001"
-            className="w-full px-4 py-3 border-2 border-[var(--navy-200)] rounded-lg focus:border-[var(--navy-800)] focus:outline-none text-lg text-center tracking-widest font-mono"
-            autoComplete="postal-code"
-          />
+          <select
+            id="borough"
+            value={borough}
+            onChange={(e) => { setBorough(e.target.value); setError('') }}
+            className="w-full px-4 py-3 border-2 border-[var(--navy-200)] rounded-lg focus:border-[var(--navy-800)] focus:outline-none text-lg bg-white"
+          >
+            {BOROUGHS.map((b) => (
+              <option key={b.value} value={b.value}>
+                {b.icon} {b.label}
+              </option>
+            ))}
+          </select>
           <p className="mt-1 text-xs text-[var(--navy-400)]">
-            We use this to personalize your alerts (subway lines, parking rules, local events)
+            We&apos;ll personalize alerts for your neighborhood
           </p>
         </div>
 

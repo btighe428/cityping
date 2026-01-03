@@ -26,25 +26,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { createUserWithInferredPreferences } from "@/lib/inference";
+import { sendEmail } from "@/lib/resend";
+import { welcomeEmail, AlertItem, nycToday, NYCTodayData, NYCTodayEvent } from "@/lib/email-templates-v2";
 import { z } from "zod";
+import { DateTime } from "luxon";
 
 /**
  * Zod validation schema for signup request body.
  *
  * Design Rationale:
  * - email: Standard email validation, required for account identification
- * - zipCode: Must be exactly 5 numeric digits (USPS standard since 1963)
- *   We validate against the original 5-digit format rather than ZIP+4
- *   because our profile database is keyed by 5-digit codes.
+ * - borough: Required, one of the five NYC boroughs
+ * - zipCode: Optional, for future granular personalization
  * - phone: Optional E.164 format for SMS notifications (premium tier)
- *
- * Note: We intentionally keep validation minimal at signup. Additional
- * validation (e.g., NYC-specific zip code range) is handled downstream
- * by the inference engine, which gracefully defaults unknown zips.
  */
 const signupSchema = z.object({
   email: z.string().email("Invalid email address"),
-  zipCode: z.string().regex(/^\d{5}$/, "ZIP code must be exactly 5 digits"),
+  borough: z.enum(["manhattan", "brooklyn", "queens", "bronx", "staten_island"]),
+  zipCode: z.string().regex(/^\d{5}$/, "ZIP code must be exactly 5 digits").optional(),
   phone: z.string().optional(),
 });
 
@@ -103,11 +102,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const { email, zipCode, phone } = parsed.data;
+  const { email, zipCode, borough, phone } = parsed.data;
 
   try {
     // Check if user already exists by email or phone
-    // The OR query handles the optional phone gracefully
+    // For existing users, just log them in instead of rejecting
     const existingUser = await prisma.user.findFirst({
       where: {
         OR: [
@@ -118,20 +117,44 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
 
     if (existingUser) {
-      return NextResponse.json(
-        { error: "User already exists" },
-        { status: 409 }
-      );
+      // Log in existing user and send welcome back email
+      const response = NextResponse.json({
+        user: {
+          id: existingUser.id,
+          email: existingUser.email,
+          tier: existingUser.tier,
+          inferredNeighborhood: existingUser.inferredNeighborhood,
+        },
+        redirectUrl: "/preferences",
+        message: "Welcome back!",
+      });
+
+      response.cookies.set("nycping_user_id", existingUser.id, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 30,
+        path: "/",
+      });
+
+      // Send welcome back emails (async)
+      sendWelcomeEmail(
+        existingUser.email,
+        existingUser.inferredNeighborhood || "New York City"
+      ).catch((err) => console.error("Failed to send welcome back email:", err));
+
+      return response;
     }
 
-    // Create user with inferred preferences from zip code
+    // Create user with inferred preferences from borough (or zip code if provided)
     // The inference engine handles:
-    // 1. Profile lookup from ZIP_PROFILES database
+    // 1. Profile lookup from BOROUGH_PROFILES (or ZIP_PROFILES if zip provided)
     // 2. Default preference generation based on profile characteristics
     // 3. User record creation with all inferred fields populated
     const user = await createUserWithInferredPreferences(prisma, {
       email,
-      zipCode,
+      borough,
+      zipCode: zipCode || undefined,
       phone,
     });
 
@@ -144,15 +167,33 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       inferredNeighborhood: string | null;
     };
 
-    return NextResponse.json({
+    // Send welcome email with upcoming alerts (async, don't block response)
+    sendWelcomeEmail(typedUser.email, typedUser.inferredNeighborhood || "New York City").catch(
+      (err) => console.error("Failed to send welcome email:", err)
+    );
+
+    // Create response with session cookie
+    const response = NextResponse.json({
       user: {
         id: typedUser.id,
         email: typedUser.email,
         tier: typedUser.tier,
         inferredNeighborhood: typedUser.inferredNeighborhood,
       },
-      message: "Account created. Check your email for confirmation.",
+      redirectUrl: "/preferences",
+      message: "Account created successfully!",
     });
+
+    // Set session cookie to authenticate the user
+    response.cookies.set("nycping_user_id", typedUser.id, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+      path: "/",
+    });
+
+    return response;
   } catch (error) {
     // Log error for debugging (in production, use proper logging service)
     console.error("Signup error:", error);
@@ -162,4 +203,198 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       { status: 500 }
     );
   }
+}
+
+/**
+ * Sends a welcome email with upcoming alerts to new users
+ *
+ * Fetches the latest alerts from the database, groups them by module,
+ * and sends a personalized welcome email showing the value NYCPing provides.
+ *
+ * @param email - User's email address
+ * @param neighborhood - User's inferred neighborhood for personalization
+ */
+async function sendWelcomeEmail(email: string, neighborhood: string): Promise<void> {
+  console.log(`[Welcome Email] Starting for ${email}, neighborhood: ${neighborhood}`);
+
+  // Fetch upcoming alerts from database
+  const alerts = await prisma.alertEvent.findMany({
+    where: {
+      startsAt: { gte: new Date() },
+    },
+    include: {
+      source: {
+        include: { module: true },
+      },
+    },
+    orderBy: { startsAt: "asc" },
+    take: 30,
+  });
+
+  console.log(`[Welcome Email] Found ${alerts.length} upcoming alerts`);
+
+  // Transform to AlertItem format (filter out alerts with null startsAt)
+  const alertItems: AlertItem[] = alerts
+    .filter((a) => a.startsAt !== null)
+    .map((a) => ({
+      id: a.id,
+      title: a.title,
+      body: a.body || undefined,
+      startsAt: a.startsAt as Date,
+      moduleId: a.source.moduleId,
+      metadata: a.metadata as Record<string, unknown>,
+    }));
+
+  console.log(`[Welcome Email] Transformed ${alertItems.length} alert items`);
+
+  // Group by module
+  const alertsByModule: Record<string, AlertItem[]> = {};
+  alertItems.forEach((alert) => {
+    if (!alertsByModule[alert.moduleId]) {
+      alertsByModule[alert.moduleId] = [];
+    }
+    alertsByModule[alert.moduleId].push(alert);
+  });
+
+  console.log(`[Welcome Email] Grouped into ${Object.keys(alertsByModule).length} modules:`, Object.keys(alertsByModule));
+
+  // Generate welcome email
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://nycping-app.vercel.app";
+  const emailContent = welcomeEmail({
+    neighborhood,
+    alertsByModule,
+    preferencesUrl: `${baseUrl}/preferences`,
+    tier: "free",
+  });
+
+  // Send welcome email
+  await sendEmail({
+    to: email,
+    subject: emailContent.subject,
+    html: emailContent.html,
+    text: emailContent.text,
+  });
+
+  console.log(`[Welcome Email] Welcome email sent to ${email}`);
+
+  // Also send an immediate "NYC Today" preview so they see the daily format
+  await sendNYCTodayPreview(email, neighborhood);
+}
+
+/**
+ * Sends an immediate "NYC Today" preview email after signup
+ * Shows new users what their daily briefing will look like
+ */
+async function sendNYCTodayPreview(email: string, neighborhood: string): Promise<void> {
+  console.log(`[NYC Today Preview] Starting for ${email}`);
+
+  const nyNow = DateTime.now().setZone("America/New_York");
+
+  // Fetch today's alerts
+  const todayStart = nyNow.startOf("day").toJSDate();
+
+  const alertEvents = await prisma.alertEvent.findMany({
+    where: {
+      startsAt: {
+        gte: todayStart,
+        lte: nyNow.plus({ days: 2 }).toJSDate(), // Include next 2 days
+      },
+    },
+    include: {
+      source: { include: { module: true } },
+    },
+    orderBy: { startsAt: "asc" },
+    take: 10,
+  });
+
+  // Fetch evergreen events for "Don't Miss" section
+  const evergreenEvents = await prisma.evergreenEvent.findMany({
+    where: { isActive: true },
+    take: 5,
+  });
+
+  // Build What Matters Today
+  const whatMattersToday: NYCTodayEvent[] = alertEvents
+    .slice(0, 4)
+    .map((e) => ({
+      id: e.id,
+      title: e.title,
+      description: e.body?.slice(0, 60) || undefined,
+      category: e.source.moduleId,
+      isUrgent: e.source.moduleId === "transit",
+    }));
+
+  // Add a default if no alerts
+  if (whatMattersToday.length === 0) {
+    whatMattersToday.push({
+      id: "default-1",
+      title: "No urgent alerts today",
+      description: "Check back tomorrow for updates",
+      category: "transit",
+      isUrgent: false,
+    });
+  }
+
+  // Don't Miss - pick from evergreen
+  const dontMissEvent = evergreenEvents[0];
+  const dontMiss = dontMissEvent ? {
+    title: dontMissEvent.name,
+    description: dontMissEvent.insiderContext?.slice(0, 100) || "Local insider tip",
+  } : undefined;
+
+  // Tonight in NYC
+  const tonightInNYC: NYCTodayEvent[] = [
+    {
+      id: "tonight-1",
+      title: "MoMA Free Fridays",
+      description: "Free admission 5:30-9pm every Friday",
+      category: "culture",
+      isFree: true,
+    },
+    {
+      id: "tonight-2",
+      title: "Live Jazz at Smalls",
+      description: "Greenwich Village institution",
+      category: "culture",
+      price: "$25",
+    },
+  ];
+
+  // Look Ahead
+  const lookAhead = [
+    {
+      day: nyNow.plus({ days: 1 }).toFormat("EEE"),
+      forecast: "Check your weather app",
+      tip: "We'll include real forecasts soon",
+    },
+  ];
+
+  const todayData: NYCTodayData = {
+    date: nyNow.toJSDate(),
+    weather: {
+      high: 48,
+      low: 35,
+      icon: "☀️",
+      summary: "Clear",
+    },
+    whatMattersToday,
+    dontMiss,
+    tonightInNYC,
+    lookAhead,
+    user: {
+      neighborhood,
+      tier: "free",
+    },
+  };
+
+  const emailContent = nycToday(todayData);
+
+  await sendEmail({
+    to: email,
+    subject: `${emailContent.subject} (Preview)`,
+    html: emailContent.html,
+    text: emailContent.text,
+  });
+
+  console.log(`[NYC Today Preview] Sent to ${email}`);
 }

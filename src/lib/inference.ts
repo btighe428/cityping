@@ -133,6 +133,57 @@ export interface UserPreferences {
 }
 
 /**
+ * Borough-specific default profiles for users who sign up with just a borough.
+ */
+const BOROUGH_PROFILES: Record<string, ZipProfile> = {
+  manhattan: {
+    zipCode: "10001",
+    neighborhood: "Manhattan",
+    borough: "Manhattan",
+    subwayLines: ["1", "2", "3", "A", "C", "E"],
+    parkingRelevance: "low",
+    housingMarket: "rental",
+    medianIncome: 85000,
+  },
+  brooklyn: {
+    zipCode: "11201",
+    neighborhood: "Brooklyn",
+    borough: "Brooklyn",
+    subwayLines: ["2", "3", "4", "5", "A", "C", "F", "G"],
+    parkingRelevance: "medium",
+    housingMarket: "mixed",
+    medianIncome: 65000,
+  },
+  queens: {
+    zipCode: "11101",
+    neighborhood: "Queens",
+    borough: "Queens",
+    subwayLines: ["7", "E", "F", "M", "R", "N", "W"],
+    parkingRelevance: "high",
+    housingMarket: "mixed",
+    medianIncome: 70000,
+  },
+  bronx: {
+    zipCode: "10451",
+    neighborhood: "The Bronx",
+    borough: "Bronx",
+    subwayLines: ["2", "4", "5", "6", "B", "D"],
+    parkingRelevance: "high",
+    housingMarket: "rental",
+    medianIncome: 40000,
+  },
+  staten_island: {
+    zipCode: "10301",
+    neighborhood: "Staten Island",
+    borough: "Staten Island",
+    subwayLines: [],
+    parkingRelevance: "high",
+    housingMarket: "ownership",
+    medianIncome: 80000,
+  },
+};
+
+/**
  * Infers a ZipProfile from a given zip code.
  *
  * This function performs a simple lookup in the ZIP_PROFILES database,
@@ -153,6 +204,16 @@ export interface UserPreferences {
  */
 export function inferProfileFromZip(zipCode: string): ZipProfile {
   return ZIP_PROFILES[zipCode] ?? DEFAULT_PROFILE;
+}
+
+/**
+ * Infers a ZipProfile from a borough name.
+ *
+ * @param borough - Borough identifier (manhattan, brooklyn, queens, bronx, staten_island)
+ * @returns ZipProfile for the specified borough, or DEFAULT_PROFILE if unknown
+ */
+export function inferProfileFromBorough(borough: string): ZipProfile {
+  return BOROUGH_PROFILES[borough] ?? DEFAULT_PROFILE;
 }
 
 /**
@@ -288,10 +349,10 @@ export function generateDefaultPreferences(profile: ZipProfile): UserPreferences
 }
 
 /**
- * Creates a new user with inferred preferences from their zip code.
+ * Creates a new user with inferred preferences from their borough or zip code.
  *
  * This async function orchestrates the full user creation flow:
- * 1. Infer profile from zip code
+ * 1. Infer profile from borough (or zip code if provided)
  * 2. Generate default preferences
  * 3. Create user record with preferences in database
  *
@@ -299,13 +360,13 @@ export function generateDefaultPreferences(profile: ZipProfile): UserPreferences
  * It's designed to be called from API routes or server actions.
  *
  * @param db - Prisma client instance
- * @param userData - User registration data including zipCode
+ * @param userData - User registration data including borough (required) and optional zipCode
  * @returns Created user record with preferences
  *
  * @example
  * const user = await createUserWithInferredPreferences(prisma, {
  *   email: "user@example.com",
- *   zipCode: "11211",
+ *   borough: "brooklyn",
  *   phone: "+1234567890",
  * });
  */
@@ -314,27 +375,56 @@ export async function createUserWithInferredPreferences(
   db: any,
   userData: {
     email: string;
-    zipCode: string;
+    borough: string;
+    zipCode?: string;
     phone?: string;
-    name?: string;
   }
 ): Promise<unknown> {
-  const profile = inferProfileFromZip(userData.zipCode);
+  // Use zip code profile if provided, otherwise use borough profile
+  const profile = userData.zipCode
+    ? inferProfileFromZip(userData.zipCode)
+    : inferProfileFromBorough(userData.borough);
   const preferences = generateDefaultPreferences(profile);
 
-  // Create user with inferred data
-  const user = await db.user.create({
-    data: {
-      email: userData.email,
-      phone: userData.phone,
-      name: userData.name,
-      zipCode: userData.zipCode,
-      inferredNeighborhood: profile.neighborhood,
-      inferredBorough: profile.borough,
-      inferredSubwayLines: profile.subwayLines,
-      inferredHasParking: shouldEnableParking(profile.parkingRelevance),
-      preferences: preferences,
-    },
+  // Create user with inferred data and module preferences in a transaction
+  const user = await db.$transaction(async (tx: typeof db) => {
+    // Create the user record
+    const newUser = await tx.user.create({
+      data: {
+        email: userData.email,
+        phone: userData.phone,
+        zipCode: userData.zipCode || null,
+        preferredBorough: userData.borough || null,
+        inferredNeighborhood: profile.neighborhood,
+        inferredSubwayLines: profile.subwayLines,
+        inferredHasParking: shouldEnableParking(profile.parkingRelevance),
+      },
+    });
+
+    // Create UserModulePreference records for each module
+    // Module IDs: parking, transit, events, housing, food (sample sales), deals
+    const modulePrefs = [
+      { moduleId: "parking", enabled: preferences.parking.enabled, settings: preferences.parking.settings },
+      { moduleId: "transit", enabled: preferences.transit.enabled, settings: preferences.transit.settings },
+      { moduleId: "housing", enabled: preferences.housing.enabled, settings: preferences.housing.settings },
+      { moduleId: "food", enabled: true, settings: { categories: ["fashion", "designer", "accessories"] } }, // Sample sales
+      { moduleId: "events", enabled: preferences.events.enabled, settings: preferences.events.settings },
+      { moduleId: "deals", enabled: preferences.deals.enabled, settings: preferences.deals.settings },
+    ];
+
+    for (const pref of modulePrefs) {
+      await tx.userModulePreference.create({
+        data: {
+          userId: newUser.id,
+          moduleId: pref.moduleId,
+          enabled: pref.enabled,
+          settings: pref.settings,
+          isInferred: true,
+        },
+      });
+    }
+
+    return newUser;
   });
 
   return user;

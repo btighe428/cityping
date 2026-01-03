@@ -9,29 +9,52 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://parkping.net'),
+  metadataBase: new URL('https://cityping.net'),
   title: {
-    default: "ParkPing - NYC Alternate Side Parking Alerts & Suspension Calendar",
-    template: "%s | ParkPing"
+    default: "NYC CityPing - Your Daily NYC Intelligence: Parking, Transit, Events & Housing Alerts",
+    template: "%s | NYC CityPing"
   },
-  description: "Never get a parking ticket on a holiday again. Get SMS/email alerts the night before NYC alternate side parking (ASP) is suspended. Free during beta. Join 1,000+ NYC drivers.",
+  description: "The essential daily briefing for New Yorkers. Get personalized alerts for alternate side parking, subway delays, housing lottery deadlines, events, and more. Free morning emails that tell you what matters today in NYC.",
   keywords: [
+    // Core product
+    "NYC alerts",
+    "New York City notifications",
+    "NYC daily briefing",
+    "NYC morning newsletter",
+    // Parking (existing strength)
     "NYC alternate side parking",
     "ASP suspension",
     "parking alerts NYC",
     "alternate side parking calendar",
     "NYC parking rules",
-    "parking suspension alerts",
     "NYC street cleaning",
-    "parking ticket prevention",
-    "NYC parking holidays",
-    "ASP NYC",
-    "New York parking",
-    "NYC parking notifications"
+    "snow emergency parking NYC",
+    // Transit
+    "NYC subway alerts",
+    "MTA service alerts",
+    "NYC transit delays",
+    "subway service changes",
+    "NYC train delays",
+    // Events
+    "NYC events this week",
+    "things to do in NYC",
+    "NYC free events",
+    "NYC events calendar",
+    "what to do in New York",
+    // Housing
+    "NYC housing lottery",
+    "affordable housing NYC",
+    "NYC lottery apartments",
+    "housing connect NYC",
+    // Local
+    "NYC sample sales",
+    "NYC restaurant week",
+    "open house new york",
+    "NYC insider tips"
   ],
-  authors: [{ name: "ParkPing" }],
-  creator: "ParkPing",
-  publisher: "ParkPing",
+  authors: [{ name: "NYC CityPing" }],
+  creator: "NYC CityPing",
+  publisher: "NYC CityPing",
   robots: {
     index: true,
     follow: true,
@@ -46,28 +69,28 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    url: 'https://parkping.net',
-    siteName: 'ParkPing',
-    title: 'ParkPing - NYC Alternate Side Parking Alerts',
-    description: 'Never get a parking ticket on a holiday again. Get SMS/email alerts the night before NYC alternate side parking is suspended.',
+    url: 'https://cityping.net',
+    siteName: 'NYC CityPing',
+    title: 'NYC CityPing - Your Daily NYC Intelligence',
+    description: 'The essential daily briefing for New Yorkers. Parking, transit, events, housing lottery deadlines - everything you need to know, every morning.',
     images: [
       {
         url: '/og-image.png',
         width: 1200,
         height: 630,
-        alt: 'ParkPing - NYC Alternate Side Parking Alerts',
+        alt: 'NYC CityPing - Your Daily NYC Intelligence',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'ParkPing - NYC Alternate Side Parking Alerts',
-    description: 'Never get a parking ticket on a holiday again. Get SMS/email alerts the night before NYC ASP is suspended.',
+    title: 'NYC CityPing - Your Daily NYC Intelligence',
+    description: 'The essential daily briefing for New Yorkers. Parking, transit, events, housing - what matters today in NYC.',
     images: ['/og-image.png'],
-    creator: '@parkping',
+    creator: '@cityping',
   },
   alternates: {
-    canonical: 'https://parkping.net',
+    canonical: 'https://cityping.net',
   },
   verification: {
     google: 'your-google-verification-code',
@@ -82,10 +105,10 @@ export default function RootLayout({
   const organizationSchema = {
     "@context": "https://schema.org",
     "@type": "Organization",
-    "name": "ParkPing",
-    "url": "https://parkping.net",
-    "logo": "https://parkping.net/logo.png",
-    "description": "SMS and email alerts for NYC alternate side parking suspensions",
+    "name": "NYC CityPing",
+    "url": "https://cityping.net",
+    "logo": "https://cityping.net/logo.png",
+    "description": "The essential daily briefing for New Yorkers - personalized alerts for parking, transit, events, housing lotteries, and more.",
     "address": {
       "@type": "PostalAddress",
       "addressLocality": "New York",
@@ -97,46 +120,48 @@ export default function RootLayout({
       "name": "New York City",
       "sameAs": "https://en.wikipedia.org/wiki/New_York_City"
     },
-    "serviceType": "Parking Alert Service",
+    "serviceType": ["City Alert Service", "Local News", "Event Calendar", "Transit Alerts"],
     "contactPoint": {
       "@type": "ContactPoint",
-      "email": "support@parkping.net",
+      "email": "hello@cityping.net",
       "contactType": "Customer Support"
     },
     "sameAs": [
-      "https://twitter.com/parkping"
+      "https://twitter.com/cityping"
     ]
   };
 
   const webApplicationSchema = {
     "@context": "https://schema.org",
     "@type": "WebApplication",
-    "name": "ParkPing",
-    "url": "https://parkping.net",
-    "applicationCategory": "UtilityApplication",
-    "operatingSystem": "Web Browser, SMS",
+    "name": "NYC CityPing",
+    "url": "https://cityping.net",
+    "applicationCategory": "LifestyleApplication",
+    "operatingSystem": "Web Browser, Email, SMS",
     "offers": {
       "@type": "Offer",
       "price": "0",
       "priceCurrency": "USD",
-      "description": "Free during beta period"
+      "description": "Free daily briefings, premium SMS alerts available"
     },
-    "aggregateRating": {
-      "@type": "AggregateRating",
-      "ratingValue": "4.8",
-      "reviewCount": "1000"
-    },
-    "description": "Never get a parking ticket on a holiday again. ParkPing sends SMS and email alerts the night before NYC alternate side parking is suspended."
+    "featureList": [
+      "Daily NYC briefing emails",
+      "Alternate side parking alerts",
+      "Subway delay notifications",
+      "Housing lottery deadline reminders",
+      "NYC event recommendations",
+      "Weather-aware planning"
+    ],
+    "description": "NYC CityPing delivers personalized daily briefings to New Yorkers - know what matters today in 60 seconds."
   };
 
   const localBusinessSchema = {
     "@context": "https://schema.org",
     "@type": "LocalBusiness",
-    "name": "ParkPing",
-    "image": "https://parkping.net/logo.png",
-    "url": "https://parkping.net",
-    "telephone": "+1-XXX-XXX-XXXX",
-    "email": "support@parkping.net",
+    "name": "NYC CityPing",
+    "image": "https://cityping.net/logo.png",
+    "url": "https://cityping.net",
+    "email": "hello@cityping.net",
     "address": {
       "@type": "PostalAddress",
       "addressLocality": "New York",
@@ -149,16 +174,48 @@ export default function RootLayout({
       "longitude": -74.0060
     },
     "priceRange": "Free",
-    "servesCuisine": null,
     "areaServed": {
       "@type": "City",
       "name": "New York City"
     }
   };
 
+  const faqSchema = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What is NYC CityPing?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "NYC CityPing is a free daily briefing service for New Yorkers. Every weekday morning at 7am, you get a 60-second email covering what matters today: parking rules, subway delays, housing lottery deadlines, events, and more."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is NYC CityPing free?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes! The daily email briefing and weekly digest are completely free. Premium SMS alerts for urgent notifications are available for subscribers who want instant updates."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What alerts does NYC CityPing cover?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "NYC CityPing covers alternate side parking suspensions, subway and transit alerts, NYC housing lottery deadlines, local events, sample sales, restaurant week, and seasonal NYC happenings."
+        }
+      }
+    ]
+  };
+
   return (
     <html lang="en">
       <head>
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
@@ -170,6 +227,10 @@ export default function RootLayout({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessSchema) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
         />
       </head>
       <body className={`${inter.variable} font-sans antialiased`}>

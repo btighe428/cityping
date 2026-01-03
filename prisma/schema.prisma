@@ -249,6 +249,9 @@ model User {
   inferredSubwayLines  String[] @map("inferred_subway_lines")
   inferredHasParking   Boolean  @default(false) @map("inferred_has_parking")
 
+  // User preference (selected at signup)
+  preferredBorough     String?  @map("preferred_borough") // manhattan, brooklyn, queens, bronx, staten_island
+
   // Opt-in tracking
   smsOptInStatus SmsOptInStatus @default(pending) @map("sms_opt_in_status")
   smsOptInAt     DateTime?      @map("sms_opt_in_at") @db.Timestamptz
@@ -404,4 +407,126 @@ model NotificationOutbox {
   @@unique([userId, eventId, channel])
   @@index([status, scheduledFor])
   @@map("notification_outbox")
+}
+
+// ============================================================================
+// CITY PULSE - NYC Events Intelligence
+// ============================================================================
+
+/// Category classification for city events
+enum EventCategory {
+  culture    // Museums, galleries, theater, music
+  sports     // Games, playoffs, marathons
+  food       // Restaurant openings, deals, food events
+  civic      // Housing lotteries, signups, voting
+  weather    // Forecasts, snow days, heat waves
+  transit    // Service changes, new routes
+  seasonal   // Holidays, tree lightings, parades
+  local      // Neighborhood-specific, community
+
+  @@map("event_category")
+}
+
+/// Curation status for city events
+enum CurationStatus {
+  auto       // Auto-published (factual content)
+  review     // Awaiting human review
+  published  // Approved and visible
+  rejected   // Not suitable for publication
+
+  @@map("curation_status")
+}
+
+/// City events from all NYC sources - the canonical calendar
+/// Powers the daily/weekly digest emails with insider intelligence
+model CityEvent {
+  id              String          @id @default(cuid())
+
+  // What
+  title           String
+  description     String?         // AI-generated insider copy
+  rawDescription  String?         @map("raw_description") // Original source text
+
+  // When
+  startsAt        DateTime?       @map("starts_at") @db.Timestamptz
+  endsAt          DateTime?       @map("ends_at") @db.Timestamptz
+  deadlineAt      DateTime?       @map("deadline_at") @db.Timestamptz // Signup deadline
+  announcedAt     DateTime?       @map("announced_at") @db.Timestamptz
+
+  // Where
+  venue           String?
+  neighborhood    String?
+  borough         String?
+  latitude        Float?
+  longitude       Float?
+
+  // Classification
+  category        EventCategory
+  subcategory     String?
+  tags            String[]        @default([])
+
+  // Intelligence scores (0-100)
+  insiderScore    Int             @default(0) @map("insider_score")
+  scarcityScore   Int             @default(0) @map("scarcity_score")
+  timingScore     Int             @default(0) @map("timing_score")
+  cachetScore     Int             @default(0) @map("cachet_score")
+
+  // Curation
+  status          CurationStatus  @default(review)
+  aiConfidence    Float           @default(0) @map("ai_confidence") // 0-1
+  editorNotes     String?         @map("editor_notes")
+
+  // Source tracking
+  sourceType      String?         @map("source_type") // "api", "rss", "scrape", "manual"
+  sourceName      String?         @map("source_name") // "TimeOut", "NYC.gov", etc.
+  externalId      String?         @map("external_id")
+  sourceUrl       String?         @map("source_url")
+
+  // Evergreen linkage
+  isRecurring     Boolean         @default(false) @map("is_recurring")
+  recurrenceRule  String?         @map("recurrence_rule") // "first Sunday November"
+  evergreenId     String?         @map("evergreen_id")
+
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+
+  evergreen       EvergreenEvent? @relation(fields: [evergreenId], references: [id])
+
+  @@unique([sourceName, externalId])
+  @@index([startsAt])
+  @@index([category])
+  @@index([status])
+  @@index([insiderScore])
+  @@map("city_events")
+}
+
+/// Pre-seeded annual NYC events that recur each year
+/// AI monitors for official date announcements and creates CityEvent instances
+model EvergreenEvent {
+  id               String        @id @default(cuid())
+
+  name             String        // "Rockefeller Tree Lighting"
+  typicalDate      String        @map("typical_date") // "last Wednesday of November"
+  typicalTime      String?       @map("typical_time") // "7pm"
+  category         EventCategory
+
+  // Insider knowledge
+  insiderContext   String?       @map("insider_context") @db.Text // Local wisdom
+  tips             String[]      @default([]) // Array of pro tips
+
+  // Notification timing
+  anticipationDays Int[]         @default([30, 7, 1]) @map("anticipation_days")
+
+  // Monitoring
+  sources          String[]      @default([]) // URLs to watch for announcements
+  lastCheckedAt    DateTime?     @map("last_checked_at") @db.Timestamptz
+
+  // Metadata
+  isActive         Boolean       @default(true) @map("is_active")
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  instances        CityEvent[]
+
+  @@map("evergreen_events")
 }
