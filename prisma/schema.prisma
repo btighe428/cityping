@@ -233,6 +233,18 @@ enum UserTier {
   @@map("user_tier")
 }
 
+/// Personality preset controlling AI-generated notification tone and verbosity.
+/// TRANSPLANT: Enthusiastic newcomer, explains everything with helpful context
+/// REGULAR: Balanced, practical (default) - clear and efficient
+/// LOCAL: Brief, insider knowledge, assumes familiarity with NYC
+enum VibePreset {
+  TRANSPLANT
+  REGULAR
+  LOCAL
+
+  @@map("vibe_preset")
+}
+
 /// Unified user model for NYCPing multi-module architecture.
 /// Consolidates identity, subscription tier, and inferred location profile.
 /// Coexists with legacy Phone/Account models during migration period.
@@ -250,7 +262,8 @@ model User {
   inferredHasParking   Boolean  @default(false) @map("inferred_has_parking")
 
   // User preference (selected at signup)
-  preferredBorough String? @map("preferred_borough") // manhattan, brooklyn, queens, bronx, staten_island
+  preferredBorough String?    @map("preferred_borough") // manhattan, brooklyn, queens, bronx, staten_island
+  vibePreset       VibePreset @default(REGULAR) @map("vibe_preset")
 
   // Opt-in tracking
   smsOptInStatus SmsOptInStatus @default(pending) @map("sms_opt_in_status")
