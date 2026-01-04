@@ -10,6 +10,7 @@
  * Architecture:
  * - Queries for free-tier users with emailOptInAt set
  * - Fetches pending email notifications grouped by module
+ * - Creates feedback records with tokens for each event
  * - Builds and sends consolidated HTML digest via Resend
  * - Marks all included notifications as sent
  *
@@ -17,6 +18,14 @@
  * Scheduled for 7am ET (12:00 UTC) to deliver morning updates when users
  * are planning their day. This creates urgency around the upgrade CTA by
  * showing alerts they "missed" compared to premium SMS users.
+ *
+ * Feedback Loop Integration (Task 3.4):
+ * Each digest email includes thumbs up/down feedback links for every event.
+ * These links use secure tokens that:
+ * - Are cryptographically random (256-bit entropy)
+ * - Expire after 7 days
+ * - Enable one-click feedback without login
+ * Feedback data aggregates to improve relevance scoring by zip code.
  *
  * Security:
  * - Requires x-cron-secret header (Vercel cron convention)
@@ -32,7 +41,9 @@ import {
   buildDigestSubject,
   GroupedEvents,
   EventWithModule,
+  FeedbackTokenMap,
 } from "@/lib/email-digest";
+import { createFeedbackRecord } from "@/lib/feedback";
 
 /**
  * Verify cron secret for authorization.
@@ -142,8 +153,29 @@ export async function GET(request: NextRequest) {
           byModule[moduleId].push(notification.event as EventWithModule);
         }
 
-        // Build and send digest email
-        const html = buildDigestHtml(byModule);
+        // Create feedback records with tokens for each event
+        // This enables thumbs up/down voting in the email
+        const feedbackTokens: FeedbackTokenMap = {};
+        for (const notification of pendingNotifications) {
+          try {
+            const { token } = await createFeedbackRecord(
+              user.id,
+              notification.event.id
+            );
+            feedbackTokens[notification.event.id] = token;
+          } catch (feedbackError) {
+            // If feedback record already exists (unique constraint), skip silently
+            // This can happen if a digest is re-sent or event appears multiple times
+            console.log(
+              `[Daily Digest] Skipped feedback record for event ${notification.event.id}: ${
+                feedbackError instanceof Error ? feedbackError.message : "Unknown error"
+              }`
+            );
+          }
+        }
+
+        // Build and send digest email with feedback links
+        const html = buildDigestHtml(byModule, undefined, user.id, feedbackTokens);
         const subject = buildDigestSubject(pendingNotifications.length);
 
         await sendEmail({

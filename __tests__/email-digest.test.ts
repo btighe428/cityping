@@ -204,6 +204,120 @@ describe("buildDigestHtml", () => {
     expect(html).toContain("http://localhost:3000/preferences");
     expect(html).toContain("http://localhost:3000/unsubscribe");
   });
+
+  // =========================================================================
+  // Feedback Links Tests (Task 3.4)
+  // =========================================================================
+
+  describe("feedback links", () => {
+    it("should include feedback links when userId and feedbackTokens are provided", () => {
+      const event = createMockEvent({ title: "Test Event" });
+      const events: GroupedEvents = {
+        parking: [event],
+      };
+
+      // Create a feedbackTokens map with the event's id
+      const feedbackTokens: Record<string, string> = {
+        [event.id]: "test-token-abc123",
+      };
+
+      const html = buildDigestHtml(events, undefined, "user-123", feedbackTokens);
+
+      // Should contain thumbs up link with token and rating
+      expect(html).toContain(
+        `https://nycping.com/api/feedback?token=test-token-abc123&amp;rating=up`
+      );
+
+      // Should contain thumbs down link with token and rating
+      expect(html).toContain(
+        `https://nycping.com/api/feedback?token=test-token-abc123&amp;rating=down`
+      );
+    });
+
+    it("should not include feedback links when userId is not provided", () => {
+      const events: GroupedEvents = {
+        parking: [createMockEvent({ title: "Test Event" })],
+      };
+
+      const html = buildDigestHtml(events);
+
+      // Should not contain feedback API links
+      expect(html).not.toContain("/api/feedback?token=");
+    });
+
+    it("should not include feedback links when feedbackTokens is not provided", () => {
+      const events: GroupedEvents = {
+        parking: [createMockEvent({ title: "Test Event" })],
+      };
+
+      const html = buildDigestHtml(events, undefined, "user-123");
+
+      // Should not contain feedback API links without tokens
+      expect(html).not.toContain("/api/feedback?token=");
+    });
+
+    it("should include feedback links for each event", () => {
+      const event1 = createMockEvent({ title: "Event 1" });
+      const event2 = createMockEvent({ title: "Event 2" });
+      const events: GroupedEvents = {
+        parking: [event1, event2],
+      };
+
+      const feedbackTokens: Record<string, string> = {
+        [event1.id]: "token-for-event-1",
+        [event2.id]: "token-for-event-2",
+      };
+
+      const html = buildDigestHtml(events, undefined, "user-123", feedbackTokens);
+
+      // Should contain feedback links for both events
+      expect(html).toContain("token=token-for-event-1");
+      expect(html).toContain("token=token-for-event-2");
+    });
+
+    it("should skip feedback links for events without tokens", () => {
+      const eventWithToken = createMockEvent({ title: "Event With Token" });
+      const eventWithoutToken = createMockEvent({ title: "Event Without Token" });
+      const events: GroupedEvents = {
+        parking: [eventWithToken, eventWithoutToken],
+      };
+
+      const feedbackTokens: Record<string, string> = {
+        [eventWithToken.id]: "has-token-xyz",
+        // Note: no token for eventWithoutToken
+      };
+
+      const html = buildDigestHtml(events, undefined, "user-123", feedbackTokens);
+
+      // Should have the token for the first event
+      expect(html).toContain("token=has-token-xyz");
+
+      // Both events should still be rendered
+      expect(html).toContain("Event With Token");
+      expect(html).toContain("Event Without Token");
+    });
+
+    it("should use correct URL format for feedback links", () => {
+      const event = createMockEvent({ title: "Test" });
+      const events: GroupedEvents = {
+        parking: [event],
+      };
+
+      const feedbackTokens: Record<string, string> = {
+        [event.id]: "secure-token-123",
+      };
+
+      const html = buildDigestHtml(events, undefined, "user-123", feedbackTokens);
+
+      // Verify exact URL structure (with HTML-escaped ampersand)
+      expect(html).toMatch(
+        /api\/feedback\?token=secure-token-123&amp;rating=up/
+      );
+      expect(html).toMatch(
+        /api\/feedback\?token=secure-token-123&amp;rating=down/
+      );
+    });
+  });
 });
 
 describe("buildDigestSubject", () => {

@@ -11,6 +11,12 @@
  * - Includes upgrade CTA to drive premium conversions
  * - Follows Edward Tufte principles: maximize data-ink ratio, eliminate chartjunk
  * - Mobile-responsive HTML with inline styles for email client compatibility
+ *
+ * Feedback Loop Integration (Task 3.4):
+ * - Each event can include thumbs up/down feedback links
+ * - Tokens are generated per user-event pair for secure authentication
+ * - Feedback data aggregates to improve relevance scoring by zip code
+ * - Links use token-based auth (no login required for one-click rating)
  */
 
 import { AlertEvent, Module, AlertSource } from "@prisma/client";
@@ -31,11 +37,19 @@ export type EventWithModule = AlertEvent & {
 export type GroupedEvents = Record<string, EventWithModule[]>;
 
 /**
+ * Map of event IDs to feedback tokens for embedding in email links.
+ * Key: AlertEvent.id
+ * Value: Secure feedback token (from UserEventFeedback.feedbackToken)
+ */
+export type FeedbackTokenMap = Record<string, string>;
+
+/**
  * Builds the HTML email body for the daily digest.
  *
  * Architecture:
  * - Sections are rendered per module with icon/name headers
  * - Events within each section are rendered as table rows
+ * - Feedback links (thumbs up/down) for each event when tokens provided
  * - Upgrade CTA is included to drive free-to-premium conversion
  * - Unsubscribe/preferences links for compliance and UX
  *
@@ -43,31 +57,55 @@ export type GroupedEvents = Record<string, EventWithModule[]>;
  * - All styles are inline for maximum email client compatibility
  * - System font stack for consistent rendering across platforms
  * - Max-width container for readability on desktop
+ * - Feedback buttons use minimal styling to avoid chartjunk
  *
  * @param events - Events grouped by module ID
  * @param userName - Optional user name for personalization (future use)
+ * @param userId - Optional user ID for feedback links (enables feedback when provided)
+ * @param feedbackTokens - Optional map of eventId to feedback token
  * @returns Complete HTML document string for email body
  */
 export function buildDigestHtml(
   events: GroupedEvents,
-  userName?: string
+  userName?: string,
+  userId?: string,
+  feedbackTokens?: FeedbackTokenMap
 ): string {
+  const appBaseUrl = process.env.APP_BASE_URL || "http://localhost:3000";
+
   const sections = Object.entries(events)
     .map(([moduleId, moduleEvents]) => {
       const module = moduleEvents[0]?.source.module;
       if (!module) return "";
 
       const eventItems = moduleEvents
-        .map(
-          (e) => `
-        <tr>
-          <td style="padding: 8px 0; border-bottom: 1px solid #eee;">
-            <strong>${escapeHtml(e.title)}</strong>
-            ${e.body ? `<br><span style="color: #666;">${escapeHtml(e.body)}</span>` : ""}
-          </td>
-        </tr>
-      `
-        )
+        .map((e) => {
+          // Build feedback links if userId and token are available
+          const token = feedbackTokens?.[e.id];
+          const feedbackLinksHtml =
+            userId && token
+              ? `
+                <td style="width: 60px; text-align: right; white-space: nowrap; vertical-align: top; padding: 8px 0;">
+                  <a href="${appBaseUrl}/api/feedback?token=${escapeHtml(token)}&amp;rating=up"
+                     style="text-decoration: none; font-size: 16px; padding: 4px;"
+                     title="This was helpful">&#128077;</a>
+                  <a href="${appBaseUrl}/api/feedback?token=${escapeHtml(token)}&amp;rating=down"
+                     style="text-decoration: none; font-size: 16px; padding: 4px;"
+                     title="Not relevant">&#128078;</a>
+                </td>
+              `
+              : "";
+
+          return `
+            <tr>
+              <td style="padding: 8px 0; border-bottom: 1px solid #eee;">
+                <strong>${escapeHtml(e.title)}</strong>
+                ${e.body ? `<br><span style="color: #666;">${escapeHtml(e.body)}</span>` : ""}
+              </td>
+              ${feedbackLinksHtml}
+            </tr>
+          `;
+        })
         .join("");
 
       return `
@@ -83,8 +121,6 @@ export function buildDigestHtml(
     })
     .filter(Boolean)
     .join("");
-
-  const appBaseUrl = process.env.APP_BASE_URL || "http://localhost:3000";
 
   return `
     <!DOCTYPE html>
