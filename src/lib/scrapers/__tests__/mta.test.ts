@@ -25,7 +25,7 @@
  * - SI (Staten Island Railway)
  */
 
-import { extractAffectedLines, fetchMtaAlerts, ingestMtaAlerts } from "../mta";
+import { extractAffectedLines, fetchMtaAlerts, ingestMtaAlerts, validateAndFilterAlerts } from "../mta";
 
 // Mock the db module - must be before importing functions that use it
 jest.mock("@/lib/db", () => ({
@@ -46,13 +46,22 @@ jest.mock("@/lib/matching", () => ({
   matchEventToUsers: jest.fn().mockResolvedValue([]),
 }));
 
+// Mock the scraper-alerts module
+jest.mock("@/lib/scraper-alerts", () => ({
+  sendScraperAlert: jest.fn().mockResolvedValue(undefined),
+}));
+
 // Get mocked prisma for test manipulation
 import { prisma } from "@/lib/db";
 import { matchEventToUsers } from "@/lib/matching";
+import { sendScraperAlert } from "@/lib/scraper-alerts";
 
 const mockedPrisma = prisma as jest.Mocked<typeof prisma>;
 const mockedMatchEventToUsers = matchEventToUsers as jest.MockedFunction<
   typeof matchEventToUsers
+>;
+const mockedSendScraperAlert = sendScraperAlert as jest.MockedFunction<
+  typeof sendScraperAlert
 >;
 
 describe("MTA Scraper", () => {
@@ -584,6 +593,90 @@ describe("MTA Scraper", () => {
           }),
         })
       );
+    });
+  });
+
+  /**
+   * validateAndFilterAlerts Tests
+   *
+   * These tests verify the Zod validation layer that implements partial ingestion.
+   * The function must:
+   * - Validate each raw alert against the MtaAlertSchema
+   * - Return valid alerts for processing
+   * - Collect validation errors for admin notification
+   * - Handle malformed data gracefully without throwing
+   *
+   * Architectural Context:
+   * This validation layer implements the "circuit breaker monitoring" pattern:
+   * valid data flows through while errors are aggregated for alerting.
+   * This ensures upstream schema changes don't completely break ingestion.
+   */
+  describe("validateAndFilterAlerts", () => {
+    it("returns valid alerts and collects errors", () => {
+      const rawAlerts = [
+        { id: "1", header: "Valid alert", affectedLines: ["L"] },
+        { id: "2", header: "", affectedLines: ["G"] }, // Invalid: empty header
+        { id: "3", header: "Another valid", affectedLines: ["A"] },
+      ];
+
+      const { valid, errors } = validateAndFilterAlerts(rawAlerts);
+
+      expect(valid).toHaveLength(2);
+      expect(errors).toHaveLength(1);
+      expect(errors[0].payload).toEqual(rawAlerts[1]);
+      expect(errors[0].source).toBe("mta");
+      expect(errors[0].error).toContain("header");
+    });
+
+    it("handles completely malformed data", () => {
+      const rawAlerts = [
+        { garbage: true },
+        null,
+        { id: "1", header: "Valid", affectedLines: ["L"] },
+      ];
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { valid, errors } = validateAndFilterAlerts(rawAlerts as any);
+
+      expect(valid).toHaveLength(1);
+      expect(errors).toHaveLength(2);
+    });
+
+    it("validates all required fields", () => {
+      const rawAlerts = [
+        { header: "Missing id", affectedLines: ["L"] }, // Missing id
+        { id: "2", affectedLines: ["G"] }, // Missing header
+        { id: "3", header: "Missing lines" }, // Missing affectedLines
+        { id: "4", header: "Empty lines", affectedLines: [] }, // Empty affectedLines
+        { id: "5", header: "Valid complete", affectedLines: ["A"], description: "Optional desc" },
+      ];
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { valid, errors } = validateAndFilterAlerts(rawAlerts as any);
+
+      expect(valid).toHaveLength(1);
+      expect(valid[0].id).toBe("5");
+      expect(errors).toHaveLength(4);
+    });
+
+    it("preserves optional fields on valid alerts", () => {
+      const rawAlerts = [
+        {
+          id: "1",
+          header: "Full alert",
+          description: "Detailed description",
+          affectedLines: ["L", "G"],
+          activePeriod: { start: 1704067200, end: 1704153600 },
+        },
+      ];
+
+      const { valid, errors } = validateAndFilterAlerts(rawAlerts);
+
+      expect(valid).toHaveLength(1);
+      expect(errors).toHaveLength(0);
+      expect(valid[0].description).toBe("Detailed description");
+      expect(valid[0].activePeriod?.start).toBe(1704067200);
+      expect(valid[0].activePeriod?.end).toBe(1704153600);
     });
   });
 });

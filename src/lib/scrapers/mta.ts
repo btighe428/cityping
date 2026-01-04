@@ -36,6 +36,8 @@
 
 import { prisma } from "../db";
 import { matchEventToUsers, MatchableEvent } from "../matching";
+import { MtaAlertSchema, MtaAlert } from "../schemas/mta-alert.schema";
+import { sendScraperAlert, ScraperError } from "../scraper-alerts";
 
 /**
  * Internal representation of an MTA alert after transformation.
@@ -176,6 +178,54 @@ export function extractAffectedLines(entities: GtfsRtInformedEntity[]): string[]
 }
 
 /**
+ * Validates raw alerts against the MtaAlertSchema and separates valid from invalid.
+ *
+ * This function implements the "partial ingestion" pattern - a resilience strategy
+ * that ensures malformed data from upstream sources (MTA GTFS-RT API) doesn't
+ * prevent valid alerts from being processed. Invalid alerts are collected for
+ * admin notification via the scraper alert system.
+ *
+ * Architectural Context:
+ * In distributed systems, external data sources are inherently unreliable. The
+ * MTA's GTFS-RT feed has historically experienced schema drift (e.g., the 2019
+ * incident where `header_text` was temporarily renamed to `header`). This
+ * validation layer acts as a bulkhead, isolating ingestion failures.
+ *
+ * The pattern follows the "let it crash" philosophy from Erlang/OTP, but applied
+ * to data validation: individual bad records are logged and skipped rather than
+ * halting the entire pipeline.
+ *
+ * @param rawAlerts - Array of raw alert objects from fetchMtaAlerts
+ * @returns Object containing validated alerts and validation errors
+ */
+export function validateAndFilterAlerts(rawAlerts: unknown[]): {
+  valid: MtaAlert[];
+  errors: ScraperError[];
+} {
+  const valid: MtaAlert[] = [];
+  const errors: ScraperError[] = [];
+
+  for (const raw of rawAlerts) {
+    const result = MtaAlertSchema.safeParse(raw);
+
+    if (result.success) {
+      valid.push(result.data);
+    } else {
+      errors.push({
+        source: "mta",
+        payload: raw,
+        error: result.error.issues
+          .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+          .join("; "),
+        timestamp: new Date(),
+      });
+    }
+  }
+
+  return { valid, errors };
+}
+
+/**
  * Ingests MTA alerts into the NYC Ping event system.
  *
  * This is the primary entry point called by the cron job. It orchestrates:
@@ -211,12 +261,26 @@ export async function ingestMtaAlerts(): Promise<{
     throw new Error("MTA alert source not configured - ensure seed data exists");
   }
 
-  // Fetch current alerts from MTA
-  const alerts = await fetchMtaAlerts();
+  // Fetch raw alerts from MTA API
+  const rawAlerts = await fetchMtaAlerts();
+
+  // Validate with Zod schema - implements partial ingestion pattern
+  // Valid alerts proceed to processing; invalid alerts are collected for alerting
+  const { valid: alerts, errors } = validateAndFilterAlerts(rawAlerts);
+
+  // Send admin alert if any validation errors occurred
+  // This enables proactive monitoring of upstream schema drift
+  if (errors.length > 0) {
+    console.warn(
+      `[MTA Scraper] ${errors.length} alerts failed validation - sending admin alert`
+    );
+    await sendScraperAlert("mta", errors);
+  }
 
   let created = 0;
   let skipped = 0;
 
+  // Process only validated alerts
   for (const alert of alerts) {
     // Check for existing event using composite unique constraint
     // This implements exactly-once semantics for alert processing
@@ -273,8 +337,10 @@ export async function ingestMtaAlerts(): Promise<{
     data: { lastPolledAt: new Date() },
   });
 
+  const totalFetched = rawAlerts.length;
+  const validationErrors = errors.length;
   console.log(
-    `[MTA Scraper] Ingested ${alerts.length} alerts: ${created} created, ${skipped} skipped`
+    `[MTA Scraper] Processed ${totalFetched} alerts: ${alerts.length} valid, ${validationErrors} invalid, ${created} created, ${skipped} skipped`
   );
 
   return { created, skipped };
