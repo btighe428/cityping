@@ -340,6 +340,10 @@ model AlertEvent {
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
   expiresAt     DateTime? @map("expires_at") @db.Timestamptz
 
+  // Hype scoring for sample sales and high-demand events
+  hypeScore     Int?      @map("hype_score")   // 0-100 composite score
+  hypeFactors   Json?     @map("hype_factors") // { brandTier: 80, scarcity: +15, aiAdj: +5 }
+
   source        AlertSource          @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   notifications NotificationOutbox[]
 
