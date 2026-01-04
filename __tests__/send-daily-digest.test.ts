@@ -13,16 +13,30 @@ jest.mock("../src/lib/db", () => ({
   prisma: {
     user: {
       findMany: jest.fn(),
+      findUnique: jest.fn(),
     },
     notificationOutbox: {
       findMany: jest.fn(),
       updateMany: jest.fn(),
+    },
+    referral: {
+      findFirst: jest.fn(),
+      create: jest.fn(),
     },
   },
 }));
 
 jest.mock("../src/lib/resend", () => ({
   sendEmail: jest.fn().mockResolvedValue({ id: "mock-email-id" }),
+}));
+
+// Mock the referral service to avoid Resend initialization issues
+jest.mock("../src/lib/referral-service", () => ({
+  generateReferralCode: jest.fn().mockReturnValue("NYC-MOCK1"),
+  createReferral: jest.fn(),
+  getReferralByCode: jest.fn(),
+  convertReferral: jest.fn(),
+  createReferralCoupon: jest.fn(),
 }));
 
 // Import after mocks are set up

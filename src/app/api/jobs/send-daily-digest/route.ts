@@ -42,6 +42,7 @@ import {
   GroupedEvents,
   EventWithModule,
   FeedbackTokenMap,
+  getReferralCode,
 } from "@/lib/email-digest";
 import { createFeedbackRecord } from "@/lib/feedback";
 
@@ -174,8 +175,12 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Build and send digest email with feedback links
-        const html = buildDigestHtml(byModule, undefined, user.id, feedbackTokens);
+        // Get user's referral code for the viral growth section
+        // This creates a shareable code if the user doesn't have one yet
+        const referralCode = await getReferralCode(user.id);
+
+        // Build and send digest email with feedback links and referral section
+        const html = buildDigestHtml(byModule, undefined, user.id, feedbackTokens, referralCode);
         const subject = buildDigestSubject(pendingNotifications.length);
 
         await sendEmail({

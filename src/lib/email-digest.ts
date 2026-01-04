@@ -17,9 +17,17 @@
  * - Tokens are generated per user-event pair for secure authentication
  * - Feedback data aggregates to improve relevance scoring by zip code
  * - Links use token-based auth (no login required for one-click rating)
+ *
+ * Referral Program Integration (Task 6.5):
+ * - Each digest includes a referral promotion in the footer
+ * - Users get a personalized shareable link (cityping.com/r/{code})
+ * - Referral codes are created lazily (first-time generation, then cached)
+ * - Double-sided incentive: referee signs up, referrer gets free month
  */
 
 import { AlertEvent, Module, AlertSource } from "@prisma/client";
+import { prisma } from "./db";
+import { generateReferralCode } from "./referral-service";
 
 /**
  * Event with full source and module chain for digest rendering.
@@ -44,6 +52,105 @@ export type GroupedEvents = Record<string, EventWithModule[]>;
 export type FeedbackTokenMap = Record<string, string>;
 
 /**
+ * Placeholder email domain used for "generic" shareable referrals.
+ *
+ * When a user needs a referral code for their digest email (to share with anyone),
+ * we create a referral record with this synthetic email address. This differs from
+ * traditional referrals which target a specific email address.
+ *
+ * The format is: share.{userId}@cityping.internal
+ *
+ * This approach maintains data integrity while enabling:
+ * - One shareable code per user (no duplicates)
+ * - Easy identification of "generic" vs "targeted" referrals
+ * - Full compatibility with existing referral conversion flow
+ */
+const SHARE_EMAIL_DOMAIN = "cityping.internal";
+
+/**
+ * Gets or creates a shareable referral code for a user.
+ *
+ * This function implements lazy referral code generation for the email digest:
+ * 1. Checks if the user already has a "generic" referral (for sharing)
+ * 2. If not, creates a new referral with a synthetic referee email
+ * 3. Returns the referral code (e.g., "NYC-X9K2M")
+ *
+ * The referral code can be used in shareable links: cityping.com/r/{code}
+ * When a new user signs up via this link, they become the referee for this referral.
+ *
+ * Business Rules:
+ * - Each user gets exactly one shareable referral code
+ * - The code is valid for 90 days (standard referral expiration)
+ * - If expired, a new code is generated on next call
+ *
+ * Error Handling:
+ * - Returns null if user doesn't exist
+ * - Returns null on database errors (graceful degradation)
+ * - Logs errors for monitoring but doesn't throw
+ *
+ * @param userId - The ID of the user requesting a referral code
+ * @returns The referral code string, or null if unavailable
+ *
+ * @example
+ * const code = await getReferralCode("user_123");
+ * // Returns "NYC-A3B9K" or null
+ */
+export async function getReferralCode(userId: string): Promise<string | null> {
+  try {
+    // Synthetic email for "shareable" referrals (not targeting a specific person)
+    const shareEmail = `share.${userId}@${SHARE_EMAIL_DOMAIN}`;
+
+    // Check for existing shareable referral that's still valid
+    const existingReferral = await prisma.referral.findFirst({
+      where: {
+        referrerId: userId,
+        refereeEmail: shareEmail,
+        status: "PENDING",
+        expiresAt: { gt: new Date() },
+      },
+    });
+
+    if (existingReferral) {
+      return existingReferral.referralCode;
+    }
+
+    // Verify user exists before creating referral
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      console.warn(`[getReferralCode] User not found: ${userId}`);
+      return null;
+    }
+
+    // Generate new referral code
+    const referralCode = generateReferralCode();
+
+    // Calculate expiration date (90 days from now)
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 90);
+
+    // Create the shareable referral record
+    const referral = await prisma.referral.create({
+      data: {
+        referrerId: userId,
+        refereeEmail: shareEmail,
+        referralCode,
+        status: "PENDING",
+        expiresAt,
+      },
+    });
+
+    return referral.referralCode;
+  } catch (error) {
+    // Log error but don't throw - referral is optional enhancement
+    console.error(`[getReferralCode] Error generating code for user ${userId}:`, error);
+    return null;
+  }
+}
+
+/**
  * Builds the HTML email body for the daily digest.
  *
  * Architecture:
@@ -51,6 +158,7 @@ export type FeedbackTokenMap = Record<string, string>;
  * - Events within each section are rendered as table rows
  * - Feedback links (thumbs up/down) for each event when tokens provided
  * - Upgrade CTA is included to drive free-to-premium conversion
+ * - Referral promotion section (when code provided) to drive viral growth
  * - Unsubscribe/preferences links for compliance and UX
  *
  * Styling Notes:
@@ -58,18 +166,21 @@ export type FeedbackTokenMap = Record<string, string>;
  * - System font stack for consistent rendering across platforms
  * - Max-width container for readability on desktop
  * - Feedback buttons use minimal styling to avoid chartjunk
+ * - Referral section uses muted background to differentiate from main content
  *
  * @param events - Events grouped by module ID
  * @param userName - Optional user name for personalization (future use)
  * @param userId - Optional user ID for feedback links (enables feedback when provided)
  * @param feedbackTokens - Optional map of eventId to feedback token
+ * @param referralCode - Optional referral code for personalized sharing link
  * @returns Complete HTML document string for email body
  */
 export function buildDigestHtml(
   events: GroupedEvents,
   userName?: string,
   userId?: string,
-  feedbackTokens?: FeedbackTokenMap
+  feedbackTokens?: FeedbackTokenMap,
+  referralCode?: string | null
 ): string {
   const appBaseUrl = process.env.APP_BASE_URL || "http://localhost:3000";
 
@@ -145,6 +256,20 @@ export function buildDigestHtml(
           </a>
         </p>
       </div>
+
+      ${
+        referralCode
+          ? `
+      <div style="background: #f5f5f5; padding: 16px; margin-top: 24px; border-radius: 8px;">
+        <strong style="color: #1a1a1a;">Know someone who'd love NYC alerts?</strong><br>
+        <span style="color: #666;">Share your link and get 1 month free when they subscribe!</span><br>
+        <a href="${appBaseUrl}/r/${escapeHtml(referralCode)}" style="color: #0066cc; word-break: break-all;">
+          ${appBaseUrl}/r/${escapeHtml(referralCode)}
+        </a>
+      </div>
+      `
+          : ""
+      }
 
       <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #eee; font-size: 12px; color: #999;">
         <a href="${appBaseUrl}/preferences" style="color: #999;">Manage preferences</a> |
