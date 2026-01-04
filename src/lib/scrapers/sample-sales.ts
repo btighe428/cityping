@@ -54,6 +54,7 @@
 
 import { prisma } from "../db";
 import { matchEventToUsers, MatchableEvent } from "../matching";
+import { calculateHypeScoreWithAi } from "../hype-scoring";
 import * as cheerio from "cheerio";
 
 /**
@@ -296,7 +297,14 @@ export async function ingestSampleSales(): Promise<{
       continue;
     }
 
-    // Create new AlertEvent with sample sale metadata
+    // Calculate hype score using brand tier, scarcity signals, and AI adjustment
+    // This provides urgency scoring for email digest prioritization
+    const hypeResult = await calculateHypeScoreWithAi(
+      sale.brand,
+      sale.description || ""
+    );
+
+    // Create new AlertEvent with sample sale metadata and hype scoring
     const event = await prisma.alertEvent.create({
       data: {
         sourceId: source.id,
@@ -306,6 +314,8 @@ export async function ingestSampleSales(): Promise<{
         startsAt: sale.startDate,
         endsAt: sale.endDate,
         neighborhoods: ["manhattan"], // Most 260 sales are in Manhattan (Flatiron District)
+        hypeScore: hypeResult.finalScore,
+        hypeFactors: hypeResult.factors,
         metadata: {
           brands: [sale.brand.toLowerCase()],
           location: sale.location,

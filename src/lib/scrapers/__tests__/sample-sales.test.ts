@@ -47,14 +47,34 @@ jest.mock("@/lib/matching", () => ({
   matchEventToUsers: jest.fn().mockResolvedValue([]),
 }));
 
+// Mock the hype-scoring module
+jest.mock("@/lib/hype-scoring", () => ({
+  calculateHypeScoreWithAi: jest.fn().mockResolvedValue({
+    baseScore: 55,
+    scarcityBonus: 0,
+    aiAdjustment: 0,
+    finalScore: 55,
+    factors: {
+      brandTier: 55,
+      scarcity: 0,
+      ai: 0,
+    },
+  }),
+}));
+
 // Get mocked prisma for test manipulation
 import { prisma } from "@/lib/db";
 import { matchEventToUsers } from "@/lib/matching";
+import { calculateHypeScoreWithAi } from "@/lib/hype-scoring";
 
 const mockedPrisma = prisma as jest.Mocked<typeof prisma>;
 const mockedMatchEventToUsers = matchEventToUsers as jest.MockedFunction<
   typeof matchEventToUsers
 >;
+const mockedCalculateHypeScoreWithAi =
+  calculateHypeScoreWithAi as jest.MockedFunction<
+    typeof calculateHypeScoreWithAi
+  >;
 
 describe("260 Sample Sale Scraper", () => {
   beforeEach(() => {
@@ -802,6 +822,210 @@ describe("260 Sample Sale Scraper", () => {
       // Should not throw
       const result = await ingestSampleSales();
       expect(result.created).toBe(1);
+    });
+
+    /**
+     * Hype Scoring Integration Tests
+     *
+     * These tests verify that hype scoring is calculated and stored when
+     * creating new AlertEvent records. The hype score combines:
+     * - Brand tier (luxury, designer, contemporary, fast_fashion, unknown)
+     * - Scarcity signals (one day only, limited quantities, VIP access, deep discounts)
+     * - AI adjustment from Claude Haiku
+     *
+     * The hypeScore (0-100) and hypeFactors (JSON breakdown) are stored on AlertEvent
+     * for use in email digest prioritization and notification urgency.
+     */
+    describe("hype scoring integration", () => {
+      it("calculates hype score for new events", async () => {
+        const mockHtml = `
+          <html>
+            <body>
+              <div class="sale-listing">
+                <h3 class="sale-brand">Theory</h3>
+                <div class="sale-location">260 Fifth Avenue</div>
+                <div class="sale-dates">Jan 15-18, 2026</div>
+                <div class="sale-description">Up to 70% off</div>
+                <a href="/sales/theory">Details</a>
+              </div>
+            </body>
+          </html>
+        `;
+
+        global.fetch = jest.fn().mockResolvedValue({
+          ok: true,
+          text: () => Promise.resolve(mockHtml),
+        });
+
+        await ingestSampleSales();
+
+        // Verify calculateHypeScoreWithAi was called with brand and description
+        expect(mockedCalculateHypeScoreWithAi).toHaveBeenCalledTimes(1);
+        expect(mockedCalculateHypeScoreWithAi).toHaveBeenCalledWith(
+          "Theory",
+          "Up to 70% off"
+        );
+      });
+
+      it("stores hypeScore and hypeFactors on AlertEvent", async () => {
+        // Configure mock to return specific hype score result
+        mockedCalculateHypeScoreWithAi.mockResolvedValueOnce({
+          baseScore: 55,
+          scarcityBonus: 5,
+          aiAdjustment: 0,
+          finalScore: 60,
+          factors: {
+            brandTier: 55,
+            scarcity: 5,
+            ai: 0,
+          },
+        });
+
+        const mockHtml = `
+          <html>
+            <body>
+              <div class="sale-listing">
+                <h3 class="sale-brand">Theory</h3>
+                <div class="sale-location">260 Fifth Avenue</div>
+                <div class="sale-dates">Jan 15-18, 2026</div>
+                <div class="sale-description">70% off retail</div>
+                <a href="/sales/theory">Details</a>
+              </div>
+            </body>
+          </html>
+        `;
+
+        global.fetch = jest.fn().mockResolvedValue({
+          ok: true,
+          text: () => Promise.resolve(mockHtml),
+        });
+
+        await ingestSampleSales();
+
+        // Verify hypeScore and hypeFactors are included in AlertEvent creation
+        expect(mockedPrisma.alertEvent.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              hypeScore: 60,
+              hypeFactors: {
+                brandTier: 55,
+                scarcity: 5,
+                ai: 0,
+              },
+            }),
+          })
+        );
+      });
+
+      it("passes empty string for missing description", async () => {
+        const mockHtml = `
+          <html>
+            <body>
+              <div class="sale-listing">
+                <h3 class="sale-brand">Vince</h3>
+                <div class="sale-location">260 Fifth Avenue</div>
+                <div class="sale-dates">Jan 22-25, 2026</div>
+                <a href="/sales/vince">Details</a>
+              </div>
+            </body>
+          </html>
+        `;
+
+        global.fetch = jest.fn().mockResolvedValue({
+          ok: true,
+          text: () => Promise.resolve(mockHtml),
+        });
+
+        await ingestSampleSales();
+
+        // Verify empty string is passed for missing description
+        expect(mockedCalculateHypeScoreWithAi).toHaveBeenCalledWith("Vince", "");
+      });
+
+      it("calculates hype score for luxury brands with scarcity signals", async () => {
+        // Configure mock for luxury brand with scarcity
+        mockedCalculateHypeScoreWithAi.mockResolvedValueOnce({
+          baseScore: 95,
+          scarcityBonus: 25,
+          aiAdjustment: 5,
+          finalScore: 100, // Clamped from 125
+          factors: {
+            brandTier: 95,
+            scarcity: 25,
+            ai: 5,
+          },
+        });
+
+        const mockHtml = `
+          <html>
+            <body>
+              <div class="sale-listing">
+                <h3 class="sale-brand">Hermes</h3>
+                <div class="sale-location">260 Fifth Avenue</div>
+                <div class="sale-dates">Jan 15, 2026</div>
+                <div class="sale-description">One day only! VIP early access - 80% off</div>
+                <a href="/sales/hermes">Details</a>
+              </div>
+            </body>
+          </html>
+        `;
+
+        global.fetch = jest.fn().mockResolvedValue({
+          ok: true,
+          text: () => Promise.resolve(mockHtml),
+        });
+
+        await ingestSampleSales();
+
+        expect(mockedCalculateHypeScoreWithAi).toHaveBeenCalledWith(
+          "Hermes",
+          "One day only! VIP early access - 80% off"
+        );
+
+        expect(mockedPrisma.alertEvent.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              hypeScore: 100,
+              hypeFactors: {
+                brandTier: 95,
+                scarcity: 25,
+                ai: 5,
+              },
+            }),
+          })
+        );
+      });
+
+      it("skips hype calculation for existing events (deduplication)", async () => {
+        // First sale exists
+        (mockedPrisma.alertEvent.findUnique as jest.Mock).mockResolvedValueOnce({
+          id: "existing",
+        });
+
+        const mockHtml = `
+          <html>
+            <body>
+              <div class="sale-listing">
+                <h3 class="sale-brand">Existing Brand</h3>
+                <div class="sale-dates">Jan 15-18, 2026</div>
+                <a href="/sales/existing">Details</a>
+              </div>
+            </body>
+          </html>
+        `;
+
+        global.fetch = jest.fn().mockResolvedValue({
+          ok: true,
+          text: () => Promise.resolve(mockHtml),
+        });
+
+        const result = await ingestSampleSales();
+
+        // Hype score should not be calculated for skipped events
+        expect(mockedCalculateHypeScoreWithAi).not.toHaveBeenCalled();
+        expect(result.skipped).toBe(1);
+        expect(result.created).toBe(0);
+      });
     });
   });
 });
