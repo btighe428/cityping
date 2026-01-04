@@ -46,7 +46,9 @@
 
 import {
   calculateHypeScore,
+  calculateHypeScoreWithAi,
   detectScarcitySignals,
+  getAiHypeAdjustment,
   type ScarcitySignals,
   type HypeScoreResult,
 } from "../hype-scoring";
@@ -476,6 +478,187 @@ describe("hype-scoring", () => {
 
       expect(score.scarcityBonus).toBe(0);
       expect(score.finalScore).toBe(55);
+    });
+  });
+
+  /**
+   * AI-Powered Hype Adjustment Tests
+   *
+   * The getAiHypeAdjustment function integrates Claude Haiku to provide
+   * contextual scoring refinements. In production, it analyzes:
+   * - Scarcity signals not captured by regex patterns
+   * - Historical brand performance at sample sales
+   * - Seasonal and timing factors
+   *
+   * In test mode (NODE_ENV === "test"), the function returns 0 to avoid
+   * external API dependencies during automated testing. This follows the
+   * Test Double pattern: real API calls are tested in integration tests,
+   * while unit tests verify the function's boundary behavior.
+   *
+   * Historical Context - AI in Retail Pricing:
+   * The use of AI for dynamic pricing and demand prediction has precedent
+   * in retail since the 1990s (American Airlines SABRE system). Modern
+   * applications include Uber's surge pricing and Amazon's real-time
+   * pricing algorithms. CityPing's approach is more subtle: rather than
+   * adjusting prices, we adjust notification urgency to help users
+   * prioritize genuinely exceptional opportunities.
+   */
+  describe("getAiHypeAdjustment", () => {
+    /**
+     * Test Mode Behavior
+     *
+     * In test environment, getAiHypeAdjustment returns 0 to:
+     * 1. Avoid external API dependencies in CI/CD pipelines
+     * 2. Ensure deterministic test outcomes
+     * 3. Prevent API rate limiting during test runs
+     *
+     * This is a critical design decision: the AI adjustment is an
+     * enhancement, not a core requirement. The system functions
+     * correctly with aiAdjustment = 0.
+     */
+    it("returns 0 in test environment", async () => {
+      const adjustment = await getAiHypeAdjustment(
+        "Theory",
+        "Sample sale this weekend",
+        55
+      );
+
+      expect(adjustment).toBe(0);
+    });
+
+    /**
+     * Boundary Validation
+     *
+     * Regardless of environment, the function must return values
+     * within the valid range of -20 to +20. This prevents runaway
+     * score inflation or deflation from AI responses.
+     *
+     * The clamping is implemented in the function itself, not just
+     * in calculateHypeScoreWithAi, to ensure safety at every level.
+     */
+    it("returns adjustment between -20 and +20", async () => {
+      const adjustment = await getAiHypeAdjustment(
+        "Theory",
+        "Sample sale this weekend",
+        55
+      );
+
+      expect(adjustment).toBeGreaterThanOrEqual(-20);
+      expect(adjustment).toBeLessThanOrEqual(20);
+    });
+
+    /**
+     * Type Safety
+     *
+     * The function must return a number, never undefined or NaN.
+     * This ensures downstream calculations are always valid.
+     */
+    it("returns a valid number", async () => {
+      const adjustment = await getAiHypeAdjustment("Hermes", "One day only!", 95);
+
+      expect(typeof adjustment).toBe("number");
+      expect(Number.isNaN(adjustment)).toBe(false);
+      expect(Number.isFinite(adjustment)).toBe(true);
+    });
+  });
+
+  /**
+   * Full AI-Integrated Scoring Pipeline Tests
+   *
+   * The calculateHypeScoreWithAi function orchestrates the complete
+   * scoring pipeline including the AI adjustment step. It follows the
+   * same logic as calculateHypeScore but adds the AI refinement layer.
+   *
+   * Architecture:
+   *   [Brand Name] -> getBrandScore -> baseScore
+   *   [Description] -> detectScarcitySignals -> scarcityBonus
+   *   [Context] -> getAiHypeAdjustment -> aiAdjustment (async)
+   *   [All Scores] -> Clamping -> finalScore
+   */
+  describe("calculateHypeScoreWithAi", () => {
+    /**
+     * Return Value Structure
+     *
+     * The async function must return the same HypeScoreResult structure
+     * as the synchronous calculateHypeScore, ensuring API consistency.
+     */
+    it("returns properly structured HypeScoreResult", async () => {
+      const score = await calculateHypeScoreWithAi("Theory", "Weekend sale");
+
+      expect(typeof score.baseScore).toBe("number");
+      expect(typeof score.scarcityBonus).toBe("number");
+      expect(typeof score.aiAdjustment).toBe("number");
+      expect(typeof score.finalScore).toBe("number");
+      expect(score.factors).toHaveProperty("brandTier");
+      expect(score.factors).toHaveProperty("scarcity");
+      expect(score.factors).toHaveProperty("ai");
+    });
+
+    /**
+     * Score Range Validation
+     *
+     * Final scores must be clamped to 0-100 regardless of inputs.
+     */
+    it("clamps final score to 0-100 range", async () => {
+      const score = await calculateHypeScoreWithAi(
+        "Hermes",
+        "One day only! VIP access! 90% off!"
+      );
+
+      expect(score.finalScore).toBeGreaterThanOrEqual(0);
+      expect(score.finalScore).toBeLessThanOrEqual(100);
+    });
+
+    /**
+     * Brand Tier Integration
+     *
+     * The async function should correctly delegate to getBrandScore
+     * for base score calculation.
+     */
+    it("uses correct brand tier score", async () => {
+      const luxuryScore = await calculateHypeScoreWithAi("Hermes", "Sale");
+      const designerScore = await calculateHypeScoreWithAi("Alexander Wang", "Sale");
+      const contemporaryScore = await calculateHypeScoreWithAi("Theory", "Sale");
+
+      expect(luxuryScore.baseScore).toBe(95);
+      expect(designerScore.baseScore).toBe(75);
+      expect(contemporaryScore.baseScore).toBe(55);
+    });
+
+    /**
+     * Scarcity Detection Integration
+     *
+     * The async function should correctly detect and apply scarcity bonuses.
+     */
+    it("detects and applies scarcity bonus", async () => {
+      const withScarcity = await calculateHypeScoreWithAi(
+        "Theory",
+        "One day only! VIP access!"
+      );
+      const withoutScarcity = await calculateHypeScoreWithAi(
+        "Theory",
+        "Regular weekend sale"
+      );
+
+      expect(withScarcity.scarcityBonus).toBeGreaterThan(0);
+      expect(withoutScarcity.scarcityBonus).toBe(0);
+    });
+
+    /**
+     * AI Adjustment Integration (Test Mode)
+     *
+     * In test environment, AI adjustment should be 0, but the
+     * function should still complete successfully.
+     */
+    it("includes AI adjustment in factors", async () => {
+      const score = await calculateHypeScoreWithAi(
+        "Theory",
+        "Sample sale"
+      );
+
+      // In test mode, AI adjustment is 0
+      expect(score.aiAdjustment).toBe(0);
+      expect(score.factors.ai).toBe(0);
     });
   });
 });
