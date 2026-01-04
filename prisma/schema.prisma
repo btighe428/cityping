@@ -361,6 +361,11 @@ model AlertEvent {
   hypeScore   Int?  @map("hype_score") // 0-100 composite score
   hypeFactors Json? @map("hype_factors") // { brandTier: 80, scarcity: +15, aiAdj: +5 }
 
+  // Weather integration for venue-aware scoring
+  venueType     VenueType? @map("venue_type") // INDOOR, OUTDOOR, COVERED, WEATHER_DEPENDENT
+  weatherScore  Float?     @map("weather_score") // Adjusted relevance score based on weather
+  isWeatherSafe Boolean?   @map("is_weather_safe") // Whether event is safe given current/forecast weather
+
   source        AlertSource          @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   notifications NotificationOutbox[]
   feedback      UserEventFeedback[]
@@ -379,6 +384,17 @@ enum SourceFrequency {
   daily // Cron daily (e.g., ASP calendar sync)
 
   @@map("source_frequency")
+}
+
+/// Venue type classification for weather-aware event scoring.
+/// Determines how weather conditions affect event relevance.
+enum VenueType {
+  INDOOR // Fully enclosed venues (museums, theaters, malls)
+  OUTDOOR // Parks, rooftops, street events
+  COVERED // Partially covered (tents, awnings, pavilions)
+  WEATHER_DEPENDENT // Events that may be cancelled due to weather
+
+  @@map("venue_type")
 }
 
 // ============================================================================
