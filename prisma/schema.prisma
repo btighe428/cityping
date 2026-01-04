@@ -250,7 +250,7 @@ model User {
   inferredHasParking   Boolean  @default(false) @map("inferred_has_parking")
 
   // User preference (selected at signup)
-  preferredBorough     String?  @map("preferred_borough") // manhattan, brooklyn, queens, bronx, staten_island
+  preferredBorough String? @map("preferred_borough") // manhattan, brooklyn, queens, bronx, staten_island
 
   // Opt-in tracking
   smsOptInStatus SmsOptInStatus @default(pending) @map("sms_opt_in_status")
@@ -263,6 +263,7 @@ model User {
   // Relations
   preferences   UserModulePreference[]
   notifications NotificationOutbox[]
+  feedback      UserEventFeedback[]
 
   @@map("users")
 }
@@ -280,8 +281,9 @@ model Module {
   icon        String // Emoji identifier
   sortOrder   Int    @map("sort_order")
 
-  sources     AlertSource[]
-  preferences UserModulePreference[]
+  sources          AlertSource[]
+  preferences      UserModulePreference[]
+  inferenceWeights ZipCodeInferenceWeight[]
 
   @@map("modules")
 }
@@ -341,11 +343,12 @@ model AlertEvent {
   expiresAt     DateTime? @map("expires_at") @db.Timestamptz
 
   // Hype scoring for sample sales and high-demand events
-  hypeScore     Int?      @map("hype_score")   // 0-100 composite score
-  hypeFactors   Json?     @map("hype_factors") // { brandTier: 80, scarcity: +15, aiAdj: +5 }
+  hypeScore   Int?  @map("hype_score") // 0-100 composite score
+  hypeFactors Json? @map("hype_factors") // { brandTier: 80, scarcity: +15, aiAdj: +5 }
 
   source        AlertSource          @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   notifications NotificationOutbox[]
+  feedback      UserEventFeedback[]
 
   @@unique([sourceId, externalId])
   @@index([sourceId, createdAt])
@@ -361,6 +364,58 @@ enum SourceFrequency {
   daily // Cron daily (e.g., ASP calendar sync)
 
   @@map("source_frequency")
+}
+
+// ============================================================================
+// FEEDBACK LOOP - User Event Feedback
+// ============================================================================
+
+/// Feedback type for user event ratings.
+/// Simple binary classification for aggregation and scoring adjustments.
+enum FeedbackType {
+  THUMBS_UP
+  THUMBS_DOWN
+
+  @@map("feedback_type")
+}
+
+/// User feedback on alert events for relevance scoring.
+/// Enables feedback loop: users rate events, system learns preferences by zip code.
+/// Token-based verification for email link clicks (no login required).
+model UserEventFeedback {
+  id             String       @id @default(uuid()) @db.Uuid
+  userId         String       @map("user_id")
+  eventId        String       @map("event_id")
+  feedbackType   FeedbackType @map("feedback_type")
+  feedbackToken  String       @unique @map("feedback_token")
+  tokenExpiresAt DateTime     @map("token_expires_at") @db.Timestamptz
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event AlertEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId])
+  @@index([feedbackToken])
+  @@map("user_event_feedback")
+}
+
+/// Aggregated inference weights per zip code and module.
+/// Stores positive/negative feedback counts and computed adjustment factor.
+/// Used to boost/suppress event relevance for specific neighborhoods.
+model ZipCodeInferenceWeight {
+  id               String   @id @default(uuid()) @db.Uuid
+  zipCode          String   @map("zip_code")
+  moduleId         String   @map("module_id")
+  positiveCount    Int      @default(0) @map("positive_count")
+  negativeCount    Int      @default(0) @map("negative_count")
+  adjustmentFactor Float    @default(1.0) @map("adjustment_factor")
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([zipCode, moduleId])
+  @@index([zipCode])
+  @@map("zip_code_inference_weights")
 }
 
 // ============================================================================
@@ -419,24 +474,24 @@ model NotificationOutbox {
 
 /// Category classification for city events
 enum EventCategory {
-  culture    // Museums, galleries, theater, music
-  sports     // Games, playoffs, marathons
-  food       // Restaurant openings, deals, food events
-  civic      // Housing lotteries, signups, voting
-  weather    // Forecasts, snow days, heat waves
-  transit    // Service changes, new routes
-  seasonal   // Holidays, tree lightings, parades
-  local      // Neighborhood-specific, community
+  culture // Museums, galleries, theater, music
+  sports // Games, playoffs, marathons
+  food // Restaurant openings, deals, food events
+  civic // Housing lotteries, signups, voting
+  weather // Forecasts, snow days, heat waves
+  transit // Service changes, new routes
+  seasonal // Holidays, tree lightings, parades
+  local // Neighborhood-specific, community
 
   @@map("event_category")
 }
 
 /// Curation status for city events
 enum CurationStatus {
-  auto       // Auto-published (factual content)
-  review     // Awaiting human review
-  published  // Approved and visible
-  rejected   // Not suitable for publication
+  auto // Auto-published (factual content)
+  review // Awaiting human review
+  published // Approved and visible
+  rejected // Not suitable for publication
 
   @@map("curation_status")
 }
@@ -444,57 +499,57 @@ enum CurationStatus {
 /// City events from all NYC sources - the canonical calendar
 /// Powers the daily/weekly digest emails with insider intelligence
 model CityEvent {
-  id              String          @id @default(cuid())
+  id String @id @default(cuid())
 
   // What
-  title           String
-  description     String?         // AI-generated insider copy
-  rawDescription  String?         @map("raw_description") // Original source text
+  title          String
+  description    String? // AI-generated insider copy
+  rawDescription String? @map("raw_description") // Original source text
 
   // When
-  startsAt        DateTime?       @map("starts_at") @db.Timestamptz
-  endsAt          DateTime?       @map("ends_at") @db.Timestamptz
-  deadlineAt      DateTime?       @map("deadline_at") @db.Timestamptz // Signup deadline
-  announcedAt     DateTime?       @map("announced_at") @db.Timestamptz
+  startsAt    DateTime? @map("starts_at") @db.Timestamptz
+  endsAt      DateTime? @map("ends_at") @db.Timestamptz
+  deadlineAt  DateTime? @map("deadline_at") @db.Timestamptz // Signup deadline
+  announcedAt DateTime? @map("announced_at") @db.Timestamptz
 
   // Where
-  venue           String?
-  neighborhood    String?
-  borough         String?
-  latitude        Float?
-  longitude       Float?
+  venue        String?
+  neighborhood String?
+  borough      String?
+  latitude     Float?
+  longitude    Float?
 
   // Classification
-  category        EventCategory
-  subcategory     String?
-  tags            String[]        @default([])
+  category    EventCategory
+  subcategory String?
+  tags        String[]      @default([])
 
   // Intelligence scores (0-100)
-  insiderScore    Int             @default(0) @map("insider_score")
-  scarcityScore   Int             @default(0) @map("scarcity_score")
-  timingScore     Int             @default(0) @map("timing_score")
-  cachetScore     Int             @default(0) @map("cachet_score")
+  insiderScore  Int @default(0) @map("insider_score")
+  scarcityScore Int @default(0) @map("scarcity_score")
+  timingScore   Int @default(0) @map("timing_score")
+  cachetScore   Int @default(0) @map("cachet_score")
 
   // Curation
-  status          CurationStatus  @default(review)
-  aiConfidence    Float           @default(0) @map("ai_confidence") // 0-1
-  editorNotes     String?         @map("editor_notes")
+  status       CurationStatus @default(review)
+  aiConfidence Float          @default(0) @map("ai_confidence") // 0-1
+  editorNotes  String?        @map("editor_notes")
 
   // Source tracking
-  sourceType      String?         @map("source_type") // "api", "rss", "scrape", "manual"
-  sourceName      String?         @map("source_name") // "TimeOut", "NYC.gov", etc.
-  externalId      String?         @map("external_id")
-  sourceUrl       String?         @map("source_url")
+  sourceType String? @map("source_type") // "api", "rss", "scrape", "manual"
+  sourceName String? @map("source_name") // "TimeOut", "NYC.gov", etc.
+  externalId String? @map("external_id")
+  sourceUrl  String? @map("source_url")
 
   // Evergreen linkage
-  isRecurring     Boolean         @default(false) @map("is_recurring")
-  recurrenceRule  String?         @map("recurrence_rule") // "first Sunday November"
-  evergreenId     String?         @map("evergreen_id")
+  isRecurring    Boolean @default(false) @map("is_recurring")
+  recurrenceRule String? @map("recurrence_rule") // "first Sunday November"
+  evergreenId    String? @map("evergreen_id")
 
-  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  evergreen       EvergreenEvent? @relation(fields: [evergreenId], references: [id])
+  evergreen EvergreenEvent? @relation(fields: [evergreenId], references: [id])
 
   @@unique([sourceName, externalId])
   @@index([startsAt])
@@ -507,30 +562,30 @@ model CityEvent {
 /// Pre-seeded annual NYC events that recur each year
 /// AI monitors for official date announcements and creates CityEvent instances
 model EvergreenEvent {
-  id               String        @id @default(cuid())
+  id String @id @default(cuid())
 
-  name             String        // "Rockefeller Tree Lighting"
-  typicalDate      String        @map("typical_date") // "last Wednesday of November"
-  typicalTime      String?       @map("typical_time") // "7pm"
-  category         EventCategory
+  name        String // "Rockefeller Tree Lighting"
+  typicalDate String        @map("typical_date") // "last Wednesday of November"
+  typicalTime String?       @map("typical_time") // "7pm"
+  category    EventCategory
 
   // Insider knowledge
-  insiderContext   String?       @map("insider_context") @db.Text // Local wisdom
-  tips             String[]      @default([]) // Array of pro tips
+  insiderContext String?  @map("insider_context") @db.Text // Local wisdom
+  tips           String[] @default([]) // Array of pro tips
 
   // Notification timing
-  anticipationDays Int[]         @default([30, 7, 1]) @map("anticipation_days")
+  anticipationDays Int[] @default([30, 7, 1]) @map("anticipation_days")
 
   // Monitoring
-  sources          String[]      @default([]) // URLs to watch for announcements
-  lastCheckedAt    DateTime?     @map("last_checked_at") @db.Timestamptz
+  sources       String[]  @default([]) // URLs to watch for announcements
+  lastCheckedAt DateTime? @map("last_checked_at") @db.Timestamptz
 
   // Metadata
-  isActive         Boolean       @default(true) @map("is_active")
-  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  instances        CityEvent[]
+  instances CityEvent[]
 
   @@map("evergreen_events")
 }
