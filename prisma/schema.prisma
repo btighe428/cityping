@@ -274,9 +274,11 @@ model User {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
-  preferences   UserModulePreference[]
-  notifications NotificationOutbox[]
-  feedback      UserEventFeedback[]
+  preferences       UserModulePreference[]
+  notifications     NotificationOutbox[]
+  feedback          UserEventFeedback[]
+  referralsSent     Referral[]             @relation("ReferralsSent")
+  referralsReceived Referral[]             @relation("ReferralsReceived")
 
   @@map("users")
 }
@@ -377,6 +379,48 @@ enum SourceFrequency {
   daily // Cron daily (e.g., ASP calendar sync)
 
   @@map("source_frequency")
+}
+
+// ============================================================================
+// REFERRAL PROGRAM
+// ============================================================================
+
+/// Referral status tracking for viral growth incentives.
+/// PENDING: Referred user signed up but not yet converted to paid subscription
+/// CONVERTED: Referred user completed paid subscription (reward earned)
+/// EXPIRED: Referral expired without conversion (typically 30-90 day window)
+enum ReferralStatus {
+  PENDING // Referred user signed up but not converted
+  CONVERTED // Referred user completed paid subscription
+  EXPIRED // Referral expired without conversion
+
+  @@map("referral_status")
+}
+
+/// Referral tracking model for viral growth program.
+/// Links a referrer (existing user) to a referee (new user) with status tracking.
+/// Supports both pre-signup referrals (by email) and post-signup conversions.
+/// Integrates with Stripe for coupon-based reward fulfillment.
+model Referral {
+  id             String         @id @default(cuid())
+  referrerId     String         @map("referrer_id")
+  refereeId      String?        @map("referee_id")
+  refereeEmail   String         @map("referee_email")
+  referralCode   String         @unique @map("referral_code")
+  status         ReferralStatus @default(PENDING)
+  stripeCouponId String?        @map("stripe_coupon_id")
+  convertedAt    DateTime?      @map("converted_at") @db.Timestamptz
+  expiresAt      DateTime       @map("expires_at") @db.Timestamptz
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  referrer User  @relation("ReferralsSent", fields: [referrerId], references: [id], onDelete: Cascade)
+  referee  User? @relation("ReferralsReceived", fields: [refereeId], references: [id], onDelete: SetNull)
+
+  @@index([referralCode])
+  @@index([refereeEmail])
+  @@index([referrerId])
+  @@map("referrals")
 }
 
 // ============================================================================
