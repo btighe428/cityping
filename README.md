@@ -1,10 +1,10 @@
-# ParkPing
+# CityPing
 
 SMS-based alternate side parking (ASP) suspension alerts for NYC drivers.
 
 ## Overview
 
-ParkPing sends you a text message the evening before ASP is suspended (holidays, etc.), so you don't have to move your car. Simple, reliable, $1.99/month after a 30-day free trial.
+CityPing sends you a text message the evening before ASP is suspended (holidays, etc.), so you don't have to move your car. Simple, reliable, $1.99/month after a 30-day free trial.
 
 ## Tech Stack
 
@@ -28,7 +28,7 @@ ParkPing sends you a text message the evening before ASP is suspended (holidays,
 ### 1. Clone and Install
 
 ```bash
-cd parkping
+cd cityping
 npm install
 ```
 
@@ -44,7 +44,7 @@ Required variables:
 
 ```env
 # Database
-DATABASE_URL="postgresql://user:password@localhost:5432/parkping"
+DATABASE_URL="postgresql://user:password@localhost:5432/cityping"
 
 # Stripe
 STRIPE_SECRET_KEY="sk_test_..."
@@ -88,7 +88,7 @@ Visit http://localhost:3000
 ## Project Structure
 
 ```
-parkping/
+cityping/
 ├── src/
 │   ├── app/
 │   │   ├── page.tsx              # Landing page

@@ -80,7 +80,7 @@ export async function fetchSubwayAlerts(): Promise<SubwayAlert[]> {
   try {
     const response = await fetch(MTA_ALERTS_API, {
       headers: {
-        'User-Agent': 'ParkPing Subway Alerts (parkping.net)',
+        'User-Agent': 'CityPing Subway Alerts (cityping.net)',
         'Accept': 'application/json',
       },
     })

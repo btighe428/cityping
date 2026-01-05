@@ -1,5 +1,5 @@
 {
-  "name": "parkping",
+  "name": "cityping",
   "version": "0.1.0",
   "private": true,
   "prisma": {

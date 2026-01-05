@@ -4,7 +4,7 @@ export default function PrivacyPage() {
       <header className="py-4 px-6 border-b border-[var(--navy-100)]">
         <div className="max-w-4xl mx-auto">
           <a href="/" className="text-xl font-bold text-[var(--navy-800)]">
-            ParkPing
+            CityPing
           </a>
         </div>
       </header>
@@ -74,7 +74,7 @@ export default function PrivacyPage() {
 
           <h2 className="text-xl font-semibold text-[var(--navy-800)] mt-8 mb-4">Contact</h2>
           <p className="text-[var(--navy-600)] mb-4">
-            For privacy-related questions, contact us at support@parkping.com
+            For privacy-related questions, contact us at support@cityping.net
           </p>
         </div>
       </main>

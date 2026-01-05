@@ -17,11 +17,11 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'NYC Parking Rules Complete Guide 2025',
     description: 'Master NYC parking regulations: comprehensive guide to all rules, signs, zones, and fines.',
-    url: 'https://parkping.net/nyc-parking-rules',
+    url: 'https://cityping.net/nyc-parking-rules',
     type: 'article',
   },
   alternates: {
-    canonical: 'https://parkping.net/nyc-parking-rules',
+    canonical: 'https://cityping.net/nyc-parking-rules',
   },
 }
 
@@ -34,13 +34,13 @@ export default function NYCParkingRules() {
         "@type": "ListItem",
         "position": 1,
         "name": "Home",
-        "item": "https://parkping.net"
+        "item": "https://cityping.net"
       },
       {
         "@type": "ListItem",
         "position": 2,
         "name": "NYC Parking Rules",
-        "item": "https://parkping.net/nyc-parking-rules"
+        "item": "https://cityping.net/nyc-parking-rules"
       }
     ]
   }
@@ -52,14 +52,14 @@ export default function NYCParkingRules() {
     "description": "Comprehensive guide to all NYC parking rules, regulations, signs, and fines.",
     "author": {
       "@type": "Organization",
-      "name": "ParkPing"
+      "name": "CityPing"
     },
     "publisher": {
       "@type": "Organization",
-      "name": "ParkPing",
+      "name": "CityPing",
       "logo": {
         "@type": "ImageObject",
-        "url": "https://parkping.net/logo.png"
+        "url": "https://cityping.net/logo.png"
       }
     },
     "datePublished": "2025-01-01",
@@ -82,7 +82,7 @@ export default function NYCParkingRules() {
         <header className="py-4 px-6 border-b border-[var(--navy-100)]">
           <div className="max-w-6xl mx-auto flex justify-between items-center">
             <Link href="/" className="text-xl font-bold text-[var(--navy-800)] hover:text-[var(--navy-900)]">
-              ParkPing
+              CityPing
             </Link>
             <Link
               href="/"
@@ -619,7 +619,7 @@ export default function NYCParkingRules() {
                     2. Use Technology
                   </h3>
                   <p className="text-[var(--navy-700)]">
-                    ParkNYC app for meter extensions, ParkPing for ASP suspension alerts. Set phone reminders for your regular ASP days.
+                    ParkNYC app for meter extensions, CityPing for ASP suspension alerts. Set phone reminders for your regular ASP days.
                   </p>
                 </div>
 
@@ -693,7 +693,7 @@ export default function NYCParkingRules() {
                     FAQ
                   </h3>
                   <p className="text-[var(--navy-600)]">
-                    Answers to common NYC parking and ParkPing questions.
+                    Answers to common NYC parking and CityPing questions.
                   </p>
                 </Link>
               </div>
@@ -722,7 +722,7 @@ export default function NYCParkingRules() {
           <div className="max-w-6xl mx-auto">
             <div className="grid md:grid-cols-4 gap-8 mb-8">
               <div>
-                <h3 className="font-bold text-[var(--navy-800)] mb-3">ParkPing</h3>
+                <h3 className="font-bold text-[var(--navy-800)] mb-3">CityPing</h3>
                 <p className="text-sm text-[var(--navy-600)]">
                   Never get a parking ticket on a holiday again.
                 </p>
@@ -740,7 +740,7 @@ export default function NYCParkingRules() {
                 <h3 className="font-bold text-[var(--navy-800)] mb-3">Support</h3>
                 <ul className="space-y-2 text-sm">
                   <li><Link href="/faq" className="text-[var(--navy-600)] hover:text-[var(--navy-800)]">FAQ</Link></li>
-                  <li><a href="mailto:support@parkping.net" className="text-[var(--navy-600)] hover:text-[var(--navy-800)]">Contact</a></li>
+                  <li><a href="mailto:support@cityping.net" className="text-[var(--navy-600)] hover:text-[var(--navy-800)]">Contact</a></li>
                 </ul>
               </div>
               <div>

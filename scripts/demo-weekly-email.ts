@@ -61,7 +61,7 @@ async function main() {
 
   console.log('')
   console.log('╔══════════════════════════════════════════════════════════════╗')
-  console.log('║              ParkPing Weekly Preview Email                   ║')
+  console.log('║              CityPing Weekly Preview Email                   ║')
   console.log('╚══════════════════════════════════════════════════════════════╝')
   console.log('')
   console.log(`  📅 Week:     ${weekRange}`)

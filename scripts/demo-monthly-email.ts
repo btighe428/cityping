@@ -89,7 +89,7 @@ async function main() {
 
   console.log('')
   console.log('╔══════════════════════════════════════════════════════════════╗')
-  console.log('║               ParkPing Monthly Start Email                   ║')
+  console.log('║               CityPing Monthly Start Email                   ║')
   console.log('╚══════════════════════════════════════════════════════════════╝')
   console.log('')
   console.log(`  📅 Month:    ${MONTH_NAMES[month - 1].charAt(0).toUpperCase() + MONTH_NAMES[month - 1].slice(1)} ${year}`)

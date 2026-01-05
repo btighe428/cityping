@@ -2,7 +2,7 @@ import { Resend } from 'resend'
 
 const apiKey = process.env.RESEND_API_KEY
 const mockMode = process.env.RESEND_MOCK_MODE === 'true'
-const fromEmail = process.env.RESEND_FROM_EMAIL || 'ParkPing <alerts@parkping.com>'
+const fromEmail = process.env.RESEND_FROM_EMAIL || 'CityPing <alerts@cityping.net>'
 
 if (!apiKey) {
   console.warn('Resend API key not set - email functionality will be mocked')

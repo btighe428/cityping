@@ -1,8 +1,8 @@
-# ParkPing Tone & Personality Guide
+# CityPing Tone & Personality Guide
 
 ## The Voice
 
-ParkPing is your **parking buddy** — a friend who's got your back on NYC streets. Not a corporate notification system. Not a robotic alert. A companion who actually cares whether you get a ticket.
+CityPing is your **parking buddy** — a friend who's got your back on NYC streets. Not a corporate notification system. Not a robotic alert. A companion who actually cares whether you get a ticket.
 
 ---
 
@@ -205,7 +205,7 @@ Consistent, minimal:
 We'll remind you the evening before each suspension.
 
 ---
-Manage preferences · parkping.com
+Manage preferences · cityping.net
 ```
 
 Never:
@@ -280,7 +280,7 @@ Eventually, let users choose tone:
 
 ## Summary
 
-ParkPing's voice is:
+CityPing's voice is:
 - **A helpful friend**, not a corporate system
 - **NYC-native**, direct and efficient
 - **Reliably useful**, never spammy

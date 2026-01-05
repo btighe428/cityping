@@ -13,7 +13,7 @@ async function sendTestSMS() {
     const message = await client.messages.create({
       messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID, // Use A2P registered service
       to: testPhone,
-      body: 'ParkPing Test: Alternate side parking is SUSPENDED tomorrow for Christmas Day. No need to move your car tonight!'
+      body: 'CityPing Test: Alternate side parking is SUSPENDED tomorrow for Christmas Day. No need to move your car tonight!'
     })
 
     console.log('SMS sent successfully!')

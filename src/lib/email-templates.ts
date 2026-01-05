@@ -1,4 +1,4 @@
-// Email Templates for ParkPing
+// Email Templates for CityPing
 // Personality: Your parking buddy — a friend who's got your back on NYC streets
 // See: docs/PARKPING_TONE_GUIDE.md
 
@@ -117,7 +117,7 @@ export const EMAIL_TEMPLATES = {
         <p style="font-size: 14px; color: #64748b; text-align: center;">
           We'll remind you the evening before each suspension.<br />
           <a href="${manageUrl}" style="color: #1e3a5f;">Manage preferences</a> ·
-          <a href="https://parkping.com" style="color: #1e3a5f;">parkping.com</a>
+          <a href="https://cityping.net" style="color: #1e3a5f;">cityping.net</a>
         </p>
       </div>
     `,
@@ -131,7 +131,7 @@ Manage preferences: ${manageUrl}
 
   // Welcome email after signup (legacy - use welcomeWithWeekAhead instead)
   welcome: (manageUrl: string) => ({
-    subject: 'Welcome to ParkPing 🚗',
+    subject: 'Welcome to CityPing 🚗',
     html: `
       <div style="${baseStyle}">
         <h1 style="color: #1e3a5f; margin-bottom: 24px;">You're in.</h1>
@@ -159,7 +159,7 @@ Manage preferences: ${manageUrl}
         <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 32px 0;" />
 
         <p style="font-size: 12px; color: #94a3b8;">
-          ParkPing · NYC Parking Alerts
+          CityPing · NYC Parking Alerts
         </p>
       </div>
     `,
@@ -189,8 +189,8 @@ Questions? Just reply to this email.
 
     return {
       subject: hasSuspensions
-        ? `Welcome to ParkPing 🚗 — ${suspensions.length} Day${suspensions.length !== 1 ? 's' : ''} Off This Week`
-        : 'Welcome to ParkPing 🚗 — Your Week Ahead',
+        ? `Welcome to CityPing 🚗 — ${suspensions.length} Day${suspensions.length !== 1 ? 's' : ''} Off This Week`
+        : 'Welcome to CityPing 🚗 — Your Week Ahead',
       html: `
         <div style="${baseStyle}">
           <!-- Welcome Section -->
@@ -263,7 +263,7 @@ Questions? Just reply to this email.
           <p style="font-size: 14px; color: #64748b; text-align: center;">
             Questions? Just reply to this email.<br />
             <a href="${manageUrl}" style="color: #1e3a5f;">Manage preferences</a> ·
-            <a href="https://parkping.net" style="color: #1e3a5f;">parkping.net</a>
+            <a href="https://cityping.net" style="color: #1e3a5f;">cityping.net</a>
           </p>
         </div>
       `,
@@ -346,7 +346,7 @@ Questions? Just reply to this email.
 
           <p style="font-size: 14px; color: #64748b;">
             <a href="${manageUrl}" style="color: #1e3a5f;">Manage preferences</a> ·
-            <a href="https://parkping.com" style="color: #1e3a5f;">parkping.com</a>
+            <a href="https://cityping.net" style="color: #1e3a5f;">cityping.net</a>
           </p>
         </div>
       `,
@@ -416,7 +416,7 @@ Manage preferences: ${manageUrl}
 
           <p style="font-size: 14px; color: #64748b;">
             <a href="${manageUrl}" style="color: #1e3a5f;">Manage preferences</a> ·
-            <a href="https://parkping.net" style="color: #1e3a5f;">parkping.net</a>
+            <a href="https://cityping.net" style="color: #1e3a5f;">cityping.net</a>
           </p>
         </div>
       `,
@@ -477,7 +477,7 @@ Manage preferences: ${manageUrl}
 
         <p style="font-size: 14px; color: #64748b;">
           <a href="${manageUrl}" style="color: #1e3a5f;">Manage preferences</a> ·
-          <a href="https://parkping.com" style="color: #1e3a5f;">parkping.com</a>
+          <a href="https://cityping.net" style="color: #1e3a5f;">cityping.net</a>
         </p>
       </div>
     `,

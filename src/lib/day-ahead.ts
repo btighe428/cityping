@@ -262,7 +262,7 @@ export function generateDayAheadEmailHtml(
       <p style="font-size: 13px; color: #64748b; text-align: center;">
         <a href="${manageUrl}" style="color: #1e3a5f;">Manage alerts</a> ·
         <a href="https://portal.311.nyc.gov" style="color: #1e3a5f;">NYC 311</a> ·
-        <a href="https://parkping.net" style="color: #1e3a5f;">parkping.net</a>
+        <a href="https://cityping.net" style="color: #1e3a5f;">cityping.net</a>
       </p>
 
       <p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 16px;">

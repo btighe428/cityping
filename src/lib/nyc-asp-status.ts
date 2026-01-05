@@ -67,7 +67,7 @@ export async function fetchASPStatus(date?: string): Promise<ASPStatus | null> {
 
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'ParkPing ASP Alert Service (parkping.net)',
+        'User-Agent': 'CityPing ASP Alert Service (cityping.net)',
         'Accept': 'application/json',
       },
     })
@@ -129,7 +129,7 @@ export async function fetchFullDayStatus(date: string): Promise<FullDayStatus | 
 
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'ParkPing Service (parkping.net)',
+        'User-Agent': 'CityPing Service (cityping.net)',
         'Accept': 'application/json',
       },
     })

@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
 // Send emergency alerts for same-day suspensions
 async function sendEmergencyAlerts(cityId: string, date: string, reason: string): Promise<string[]> {
   const alertsSent: string[] = []
-  const baseUrl = process.env.APP_BASE_URL || 'https://parkping.net'
+  const baseUrl = process.env.APP_BASE_URL || 'https://cityping.net'
 
   // Get all phones subscribed to this city with active accounts
   const phoneAlerts = await prisma.phoneCityAlert.findMany({
@@ -172,7 +172,7 @@ async function sendEmergencyAlerts(cityId: string, date: string, reason: string)
     // Send SMS if opted in and SMS alerts enabled
     if (phone.smsOptInStatus === 'confirmed' && alert.notifySms) {
       try {
-        const message = `🚨 ASP is suspended TODAY for ${reason}. No need to move your car! -ParkPing`
+        const message = `🚨 ASP is suspended TODAY for ${reason}. No need to move your car! -CityPing`
         const result = await sendSms(phone.e164, message)
 
         if (result) {

@@ -17,11 +17,11 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'NYC Alternate Side Parking Complete Guide 2025',
     description: 'The ultimate guide to NYC alternate side parking: rules, suspensions, fines, and tips for avoiding tickets.',
-    url: 'https://parkping.net/nyc-alternate-side-parking-guide',
+    url: 'https://cityping.net/nyc-alternate-side-parking-guide',
     type: 'article',
   },
   alternates: {
-    canonical: 'https://parkping.net/nyc-alternate-side-parking-guide',
+    canonical: 'https://cityping.net/nyc-alternate-side-parking-guide',
   },
 }
 
@@ -33,21 +33,21 @@ export default function NYCAlternateSideParkingGuide() {
     "description": "The ultimate guide to NYC alternate side parking (ASP): rules, regulations, suspension schedule, fines, and how to never get a ticket.",
     "author": {
       "@type": "Organization",
-      "name": "ParkPing"
+      "name": "CityPing"
     },
     "publisher": {
       "@type": "Organization",
-      "name": "ParkPing",
+      "name": "CityPing",
       "logo": {
         "@type": "ImageObject",
-        "url": "https://parkping.net/logo.png"
+        "url": "https://cityping.net/logo.png"
       }
     },
     "datePublished": "2025-01-01",
     "dateModified": new Date().toISOString().split('T')[0],
     "mainEntityOfPage": {
       "@type": "WebPage",
-      "@id": "https://parkping.net/nyc-alternate-side-parking-guide"
+      "@id": "https://cityping.net/nyc-alternate-side-parking-guide"
     }
   }
 
@@ -59,13 +59,13 @@ export default function NYCAlternateSideParkingGuide() {
         "@type": "ListItem",
         "position": 1,
         "name": "Home",
-        "item": "https://parkping.net"
+        "item": "https://cityping.net"
       },
       {
         "@type": "ListItem",
         "position": 2,
         "name": "NYC Alternate Side Parking Guide",
-        "item": "https://parkping.net/nyc-alternate-side-parking-guide"
+        "item": "https://cityping.net/nyc-alternate-side-parking-guide"
       }
     ]
   }
@@ -86,7 +86,7 @@ export default function NYCAlternateSideParkingGuide() {
         <header className="py-4 px-6 border-b border-[var(--navy-100)]">
           <div className="max-w-6xl mx-auto flex justify-between items-center">
             <Link href="/" className="text-xl font-bold text-[var(--navy-800)] hover:text-[var(--navy-900)]">
-              ParkPing
+              CityPing
             </Link>
             <Link
               href="/"
@@ -245,9 +245,9 @@ export default function NYCAlternateSideParkingGuide() {
                 <li>Various religious holidays (Rosh Hashanah, Yom Kippur, Good Friday, etc.)</li>
               </ul>
               <div className="bg-green-50 border-l-4 border-green-500 p-6 my-6">
-                <p className="text-[var(--navy-800)] font-semibold mb-2">ParkPing Solution:</p>
+                <p className="text-[var(--navy-800)] font-semibold mb-2">CityPing Solution:</p>
                 <p className="text-[var(--navy-700)] mb-4">
-                  Never wonder if ASP is suspended again. ParkPing sends you automatic SMS and email alerts the evening before any ASP suspension, plus weekly previews and monthly calendars.
+                  Never wonder if ASP is suspended again. CityPing sends you automatic SMS and email alerts the evening before any ASP suspension, plus weekly previews and monthly calendars.
                 </p>
                 <Link
                   href="/"
@@ -323,7 +323,7 @@ export default function NYCAlternateSideParkingGuide() {
                     1. Set Phone Reminders
                   </h3>
                   <p className="text-[var(--navy-700)]">
-                    Create recurring reminders on your phone for your street's ASP schedule. Better yet, use ParkPing for automated alerts.
+                    Create recurring reminders on your phone for your street's ASP schedule. Better yet, use CityPing for automated alerts.
                   </p>
                 </div>
                 <div className="bg-[var(--navy-50)] border border-[var(--navy-200)] rounded-lg p-6">
@@ -375,11 +375,11 @@ export default function NYCAlternateSideParkingGuide() {
                 Modern Technology Solutions
               </h2>
               <p className="text-lg text-[var(--navy-700)] mb-4 leading-relaxed">
-                The evolution of smart city technology has made ASP compliance significantly easier. GPS-enabled street sweepers now provide real-time data on cleaning status, while notification services like ParkPing leverage this data to provide proactive alerts.
+                The evolution of smart city technology has made ASP compliance significantly easier. GPS-enabled street sweepers now provide real-time data on cleaning status, while notification services like CityPing leverage this data to provide proactive alerts.
               </p>
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-8 my-6">
                 <h3 className="text-2xl font-semibold text-[var(--navy-900)] mb-4">
-                  Why ParkPing is the Optimal Solution
+                  Why CityPing is the Optimal Solution
                 </h3>
                 <ul className="space-y-3 text-lg text-[var(--navy-700)] mb-6">
                   <li className="flex items-start">
@@ -407,7 +407,7 @@ export default function NYCAlternateSideParkingGuide() {
                   href="/"
                   className="inline-block px-8 py-4 bg-[var(--navy-800)] text-white rounded-md hover:bg-[var(--navy-900)] transition-colors font-semibold text-lg"
                 >
-                  Join 1,000+ NYC Drivers Using ParkPing
+                  Join 1,000+ NYC Drivers Using CityPing
                 </Link>
               </div>
             </section>
@@ -459,7 +459,7 @@ export default function NYCAlternateSideParkingGuide() {
                     Frequently Asked Questions
                   </h3>
                   <p className="text-[var(--navy-600)]">
-                    Get answers to common questions about ASP and ParkPing.
+                    Get answers to common questions about ASP and CityPing.
                   </p>
                 </Link>
               </div>
@@ -488,7 +488,7 @@ export default function NYCAlternateSideParkingGuide() {
           <div className="max-w-6xl mx-auto">
             <div className="grid md:grid-cols-4 gap-8 mb-8">
               <div>
-                <h3 className="font-bold text-[var(--navy-800)] mb-3">ParkPing</h3>
+                <h3 className="font-bold text-[var(--navy-800)] mb-3">CityPing</h3>
                 <p className="text-sm text-[var(--navy-600)]">
                   Never get a parking ticket on a holiday again.
                 </p>
@@ -506,7 +506,7 @@ export default function NYCAlternateSideParkingGuide() {
                 <h3 className="font-bold text-[var(--navy-800)] mb-3">Support</h3>
                 <ul className="space-y-2 text-sm">
                   <li><Link href="/faq" className="text-[var(--navy-600)] hover:text-[var(--navy-800)]">FAQ</Link></li>
-                  <li><a href="mailto:support@parkping.net" className="text-[var(--navy-600)] hover:text-[var(--navy-800)]">Contact</a></li>
+                  <li><a href="mailto:support@cityping.net" className="text-[var(--navy-600)] hover:text-[var(--navy-800)]">Contact</a></li>
                 </ul>
               </div>
               <div>

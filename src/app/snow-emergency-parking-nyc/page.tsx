@@ -16,11 +16,11 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'NYC Snow Emergency Parking Rules 2025',
     description: 'Essential guide to parking during NYC snow emergencies: rules, restrictions, and how to avoid tickets.',
-    url: 'https://parkping.net/snow-emergency-parking-nyc',
+    url: 'https://cityping.net/snow-emergency-parking-nyc',
     type: 'article',
   },
   alternates: {
-    canonical: 'https://parkping.net/snow-emergency-parking-nyc',
+    canonical: 'https://cityping.net/snow-emergency-parking-nyc',
   },
 }
 
@@ -33,13 +33,13 @@ export default function SnowEmergencyParking() {
         "@type": "ListItem",
         "position": 1,
         "name": "Home",
-        "item": "https://parkping.net"
+        "item": "https://cityping.net"
       },
       {
         "@type": "ListItem",
         "position": 2,
         "name": "Snow Emergency Parking NYC",
-        "item": "https://parkping.net/snow-emergency-parking-nyc"
+        "item": "https://cityping.net/snow-emergency-parking-nyc"
       }
     ]
   }
@@ -51,14 +51,14 @@ export default function SnowEmergencyParking() {
     "description": "Complete guide to NYC snow emergency parking rules and winter weather parking regulations.",
     "author": {
       "@type": "Organization",
-      "name": "ParkPing"
+      "name": "CityPing"
     },
     "publisher": {
       "@type": "Organization",
-      "name": "ParkPing",
+      "name": "CityPing",
       "logo": {
         "@type": "ImageObject",
-        "url": "https://parkping.net/logo.png"
+        "url": "https://cityping.net/logo.png"
       }
     },
     "datePublished": "2025-01-01",
@@ -81,7 +81,7 @@ export default function SnowEmergencyParking() {
         <header className="py-4 px-6 border-b border-[var(--navy-100)]">
           <div className="max-w-6xl mx-auto flex justify-between items-center">
             <Link href="/" className="text-xl font-bold text-[var(--navy-800)] hover:text-[var(--navy-900)]">
-              ParkPing
+              CityPing
             </Link>
             <Link
               href="/"
@@ -115,7 +115,7 @@ export default function SnowEmergencyParking() {
             <div className="bg-blue-600 text-white rounded-lg p-6 mb-12">
               <h2 className="text-2xl font-bold mb-3">Snow Emergency Declarations</h2>
               <p className="text-lg mb-4">
-                The NYC Office of Emergency Management (OEM) declares snow emergencies when significant winter weather is forecast. ParkPing subscribers receive immediate alerts when snow emergencies are declared.
+                The NYC Office of Emergency Management (OEM) declares snow emergencies when significant winter weather is forecast. CityPing subscribers receive immediate alerts when snow emergencies are declared.
               </p>
               <Link
                 href="/"
@@ -174,7 +174,7 @@ export default function SnowEmergencyParking() {
                 <li><strong>NYC Notify:</strong> Official emergency notification system (register at notify.nyc)</li>
                 <li><strong>311:</strong> Call 311 for current snow emergency status</li>
                 <li><strong>NYC.gov:</strong> Check the homepage for emergency banners</li>
-                <li><strong>ParkPing:</strong> Automatic SMS/email alerts when emergencies are declared</li>
+                <li><strong>CityPing:</strong> Automatic SMS/email alerts when emergencies are declared</li>
                 <li><strong>Local news:</strong> All major news outlets report snow emergency declarations</li>
               </ul>
             </section>
@@ -340,10 +340,10 @@ export default function SnowEmergencyParking() {
 
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg p-8 mt-6">
                 <h3 className="text-2xl font-semibold text-[var(--navy-900)] mb-4">
-                  ParkPing Solves the Confusion
+                  CityPing Solves the Confusion
                 </h3>
                 <p className="text-lg text-[var(--navy-700)] mb-4">
-                  Tracking both ASP suspensions AND snow emergency declarations is complex. ParkPing monitors both and sends you clear, actionable alerts:
+                  Tracking both ASP suspensions AND snow emergency declarations is complex. CityPing monitors both and sends you clear, actionable alerts:
                 </p>
                 <ul className="space-y-2 text-[var(--navy-700)] mb-6">
                   <li>• "Snow emergency declared - check if you're on a snow route"</li>
@@ -580,7 +580,7 @@ export default function SnowEmergencyParking() {
                     FAQ
                   </h3>
                   <p className="text-[var(--navy-600)]">
-                    Common questions about parking and ParkPing alerts.
+                    Common questions about parking and CityPing alerts.
                   </p>
                 </Link>
               </div>
@@ -609,7 +609,7 @@ export default function SnowEmergencyParking() {
           <div className="max-w-6xl mx-auto">
             <div className="grid md:grid-cols-4 gap-8 mb-8">
               <div>
-                <h3 className="font-bold text-[var(--navy-800)] mb-3">ParkPing</h3>
+                <h3 className="font-bold text-[var(--navy-800)] mb-3">CityPing</h3>
                 <p className="text-sm text-[var(--navy-600)]">
                   Never get a parking ticket on a holiday again.
                 </p>
@@ -627,7 +627,7 @@ export default function SnowEmergencyParking() {
                 <h3 className="font-bold text-[var(--navy-800)] mb-3">Support</h3>
                 <ul className="space-y-2 text-sm">
                   <li><Link href="/faq" className="text-[var(--navy-600)] hover:text-[var(--navy-800)]">FAQ</Link></li>
-                  <li><a href="mailto:support@parkping.net" className="text-[var(--navy-600)] hover:text-[var(--navy-800)]">Contact</a></li>
+                  <li><a href="mailto:support@cityping.net" className="text-[var(--navy-600)] hover:text-[var(--navy-800)]">Contact</a></li>
                 </ul>
               </div>
               <div>

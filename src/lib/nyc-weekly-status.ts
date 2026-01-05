@@ -68,7 +68,7 @@ async function fetchDayStatus(date: string): Promise<DayStatus | null> {
   try {
     const response = await fetch(`${NYC_311_CALENDAR_API}?today=${date}`, {
       headers: {
-        'User-Agent': 'ParkPing Weekly Status (parkping.net)',
+        'User-Agent': 'CityPing Weekly Status (cityping.net)',
         'Accept': 'application/json',
       },
     })
@@ -287,7 +287,7 @@ export function generateWeeklyEmailHtml(status: WeeklyStatus, manageUrl: string)
       <p style="font-size: 14px; color: #64748b; text-align: center;">
         <a href="${manageUrl}" style="color: #1e3a5f;">Manage preferences</a> ·
         <a href="https://portal.311.nyc.gov" style="color: #1e3a5f;">NYC 311</a> ·
-        <a href="https://parkping.net" style="color: #1e3a5f;">parkping.net</a>
+        <a href="https://cityping.net" style="color: #1e3a5f;">cityping.net</a>
       </p>
     </div>
   `

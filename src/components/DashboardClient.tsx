@@ -112,7 +112,7 @@ export default function DashboardClient({
       {/* Header */}
       <header className="bg-white border-b border-[var(--navy-200)] py-4 px-6">
         <div className="max-w-4xl mx-auto flex justify-between items-center">
-          <div className="text-xl font-bold text-[var(--navy-800)]">ParkPing</div>
+          <div className="text-xl font-bold text-[var(--navy-800)]">CityPing</div>
           <div className="flex items-center gap-4">
             <span className="text-[var(--navy-600)]">
               {email || (phone ? maskPhone(phone.e164) : 'No contact')}
@@ -299,7 +299,7 @@ export default function DashboardClient({
             Manage Billing
           </button>
           <p className="mt-2 text-xs text-[var(--navy-400)]">
-            Need help? Text HELP or email support@parkping.com
+            Need help? Text HELP or email support@cityping.net
           </p>
         </section>
       </main>

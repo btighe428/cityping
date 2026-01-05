@@ -3,24 +3,24 @@ import Link from 'next/link'
 import FAQ from '@/components/FAQ'
 
 export const metadata: Metadata = {
-  title: 'FAQ - ParkPing NYC Alternate Side Parking Alerts',
-  description: 'Frequently asked questions about ParkPing, NYC alternate side parking alerts, ASP suspensions, pricing, and how our SMS/email notification service works.',
+  title: 'FAQ - CityPing NYC Alternate Side Parking Alerts',
+  description: 'Frequently asked questions about CityPing, NYC alternate side parking alerts, ASP suspensions, pricing, and how our SMS/email notification service works.',
   keywords: [
-    'ParkPing FAQ',
+    'CityPing FAQ',
     'ASP alerts FAQ',
     'NYC parking questions',
     'alternate side parking help',
-    'ParkPing how it works',
+    'CityPing how it works',
     'parking alert service NYC'
   ],
   openGraph: {
-    title: 'FAQ - ParkPing',
-    description: 'Get answers to common questions about ParkPing and NYC alternate side parking alerts.',
-    url: 'https://parkping.net/faq',
+    title: 'FAQ - CityPing',
+    description: 'Get answers to common questions about CityPing and NYC alternate side parking alerts.',
+    url: 'https://cityping.net/faq',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://parkping.net/faq',
+    canonical: 'https://cityping.net/faq',
   },
 }
 
@@ -28,8 +28,8 @@ export default function FAQPage() {
   // Extended FAQ data for the full page
   const extendedFaqs = [
     {
-      question: 'How does ParkPing work?',
-      answer: 'ParkPing monitors NYC\'s official alternate side parking calendar maintained by the Department of Sanitation. When ASP is suspended (holidays, religious observances, etc.), we send you an SMS text and/or email alert the evening before. You\'ll also receive weekly previews and monthly calendars so you can plan ahead.'
+      question: 'How does CityPing work?',
+      answer: 'CityPing monitors NYC\'s official alternate side parking calendar maintained by the Department of Sanitation. When ASP is suspended (holidays, religious observances, etc.), we send you an SMS text and/or email alert the evening before. You\'ll also receive weekly previews and monthly calendars so you can plan ahead.'
     },
     {
       question: 'What types of alerts will I receive?',
@@ -56,12 +56,12 @@ export default function FAQPage() {
       answer: 'After signing up, we\'ll text you asking to confirm by replying YES. This is required by SMS regulations. If you don\'t confirm, you won\'t receive alerts. You can text YES anytime later to activate your subscription - your account remains active.'
     },
     {
-      question: 'How much does ParkPing cost?',
-      answer: 'ParkPing is currently FREE during our beta period. We\'re perfecting the service before introducing paid plans. When we do launch pricing, existing beta users will receive special lifetime discounts as a thank you for being early adopters.'
+      question: 'How much does CityPing cost?',
+      answer: 'CityPing is currently FREE during our beta period. We\'re perfecting the service before introducing paid plans. When we do launch pricing, existing beta users will receive special lifetime discounts as a thank you for being early adopters.'
     },
     {
       question: 'Does this work in all five boroughs?',
-      answer: 'Yes! ParkPing covers all five NYC boroughs: Manhattan, Brooklyn, Queens, The Bronx, and Staten Island. ASP suspensions are city-wide, so when it\'s suspended in one borough, it\'s suspended everywhere.'
+      answer: 'Yes! CityPing covers all five NYC boroughs: Manhattan, Brooklyn, Queens, The Bronx, and Staten Island. ASP suspensions are city-wide, so when it\'s suspended in one borough, it\'s suspended everywhere.'
     },
     {
       question: 'What if I get a ticket on a day you said ASP was suspended?',
@@ -81,7 +81,7 @@ export default function FAQPage() {
     },
     {
       question: 'Do you cover parking in other cities?',
-      answer: 'Currently, ParkPing only covers New York City. However, we\'re exploring expansion to other cities with alternate side parking programs, including Boston, Philadelphia, Chicago, and Washington DC. Sign up for NYC to be notified when we expand.'
+      answer: 'Currently, CityPing only covers New York City. However, we\'re exploring expansion to other cities with alternate side parking programs, including Boston, Philadelphia, Chicago, and Washington DC. Sign up for NYC to be notified when we expand.'
     },
     {
       question: 'How reliable is your alert system?',
@@ -89,7 +89,7 @@ export default function FAQPage() {
     },
     {
       question: 'What happens if I change my phone number?',
-      answer: 'Contact us at support@parkping.net with your old and new phone numbers, and we\'ll update your account. You can also manage this through your customer portal. Your subscription history and billing remain unchanged.'
+      answer: 'Contact us at support@cityping.net with your old and new phone numbers, and we\'ll update your account. You can also manage this through your customer portal. Your subscription history and billing remain unchanged.'
     },
     {
       question: 'Can I receive email alerts instead of SMS?',
@@ -104,8 +104,8 @@ export default function FAQPage() {
       answer: 'We monitor the official NYC calendar multiple times daily. If the city makes a last-minute change (rare but possible), we\'ll send an updated alert immediately. We also monitor NYC emergency management announcements for weather-related suspensions.'
     },
     {
-      question: 'Is ParkPing affiliated with NYC government?',
-      answer: 'No, ParkPing is an independent service not affiliated with NYC government. We source our data from public NYC Department of Sanitation calendars and provide a convenient alert service. We\'re a private company helping NYC drivers avoid parking tickets.'
+      question: 'Is CityPing affiliated with NYC government?',
+      answer: 'No, CityPing is an independent service not affiliated with NYC government. We source our data from public NYC Department of Sanitation calendars and provide a convenient alert service. We\'re a private company helping NYC drivers avoid parking tickets.'
     }
   ]
 
@@ -117,13 +117,13 @@ export default function FAQPage() {
         "@type": "ListItem",
         "position": 1,
         "name": "Home",
-        "item": "https://parkping.net"
+        "item": "https://cityping.net"
       },
       {
         "@type": "ListItem",
         "position": 2,
         "name": "FAQ",
-        "item": "https://parkping.net/faq"
+        "item": "https://cityping.net/faq"
       }
     ]
   }
@@ -157,7 +157,7 @@ export default function FAQPage() {
         <header className="py-4 px-6 border-b border-[var(--navy-100)]">
           <div className="max-w-6xl mx-auto flex justify-between items-center">
             <Link href="/" className="text-xl font-bold text-[var(--navy-800)] hover:text-[var(--navy-900)]">
-              ParkPing
+              CityPing
             </Link>
             <Link
               href="/"
@@ -184,7 +184,7 @@ export default function FAQPage() {
             </h1>
 
             <p className="text-xl text-[var(--navy-600)] mb-12 leading-relaxed">
-              Everything you need to know about ParkPing, NYC alternate side parking alerts, and how our service helps you avoid parking tickets.
+              Everything you need to know about CityPing, NYC alternate side parking alerts, and how our service helps you avoid parking tickets.
             </p>
 
             {/* FAQ Component from home page */}
@@ -356,7 +356,7 @@ export default function FAQPage() {
           <div className="max-w-6xl mx-auto">
             <div className="grid md:grid-cols-4 gap-8 mb-8">
               <div>
-                <h3 className="font-bold text-[var(--navy-800)] mb-3">ParkPing</h3>
+                <h3 className="font-bold text-[var(--navy-800)] mb-3">CityPing</h3>
                 <p className="text-sm text-[var(--navy-600)]">
                   Never get a parking ticket on a holiday again.
                 </p>
@@ -374,7 +374,7 @@ export default function FAQPage() {
                 <h3 className="font-bold text-[var(--navy-800)] mb-3">Support</h3>
                 <ul className="space-y-2 text-sm">
                   <li><Link href="/faq" className="text-[var(--navy-600)] hover:text-[var(--navy-800)]">FAQ</Link></li>
-                  <li><a href="mailto:support@parkping.net" className="text-[var(--navy-600)] hover:text-[var(--navy-800)]">Contact</a></li>
+                  <li><a href="mailto:support@cityping.net" className="text-[var(--navy-600)] hover:text-[var(--navy-800)]">Contact</a></li>
                 </ul>
               </div>
               <div>

@@ -18,11 +18,11 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'NYC ASP Suspension Calendar 2025',
     description: 'Complete calendar of NYC alternate side parking suspensions for 2025 - all holidays and special events.',
-    url: 'https://parkping.net/asp-suspension-calendar',
+    url: 'https://cityping.net/asp-suspension-calendar',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://parkping.net/asp-suspension-calendar',
+    canonical: 'https://cityping.net/asp-suspension-calendar',
   },
 }
 
@@ -35,13 +35,13 @@ export default function ASPSuspensionCalendar() {
         "@type": "ListItem",
         "position": 1,
         "name": "Home",
-        "item": "https://parkping.net"
+        "item": "https://cityping.net"
       },
       {
         "@type": "ListItem",
         "position": 2,
         "name": "ASP Suspension Calendar",
-        "item": "https://parkping.net/asp-suspension-calendar"
+        "item": "https://cityping.net/asp-suspension-calendar"
       }
     ]
   }
@@ -131,7 +131,7 @@ export default function ASPSuspensionCalendar() {
         <header className="py-4 px-6 border-b border-[var(--navy-100)]">
           <div className="max-w-6xl mx-auto flex justify-between items-center">
             <Link href="/" className="text-xl font-bold text-[var(--navy-800)] hover:text-[var(--navy-900)]">
-              ParkPing
+              CityPing
             </Link>
             <Link
               href="/"
@@ -276,7 +276,7 @@ export default function ASPSuspensionCalendar() {
                   </li>
                   <li className="flex items-start">
                     <span className="mr-2">•</span>
-                    <span><strong>Subject to Change:</strong> The city may announce additional suspensions due to weather or special events. ParkPing alerts include these emergency suspensions.</span>
+                    <span><strong>Subject to Change:</strong> The city may announce additional suspensions due to weather or special events. CityPing alerts include these emergency suspensions.</span>
                   </li>
                 </ul>
               </div>
@@ -360,7 +360,7 @@ export default function ASPSuspensionCalendar() {
                     Or Get Automatic Alerts
                   </h3>
                   <p className="text-[var(--navy-600)] mb-4">
-                    The easiest way: Sign up for ParkPing and receive automatic alerts.
+                    The easiest way: Sign up for CityPing and receive automatic alerts.
                   </p>
                   <Link
                     href="/"
@@ -422,7 +422,7 @@ export default function ASPSuspensionCalendar() {
                     Frequently Asked Questions
                   </h3>
                   <p className="text-[var(--navy-600)]">
-                    Common questions about ASP suspensions and ParkPing alerts.
+                    Common questions about ASP suspensions and CityPing alerts.
                   </p>
                 </Link>
               </div>
@@ -435,7 +435,7 @@ export default function ASPSuspensionCalendar() {
           <div className="max-w-6xl mx-auto">
             <div className="grid md:grid-cols-4 gap-8 mb-8">
               <div>
-                <h3 className="font-bold text-[var(--navy-800)] mb-3">ParkPing</h3>
+                <h3 className="font-bold text-[var(--navy-800)] mb-3">CityPing</h3>
                 <p className="text-sm text-[var(--navy-600)]">
                   Never get a parking ticket on a holiday again.
                 </p>
@@ -453,7 +453,7 @@ export default function ASPSuspensionCalendar() {
                 <h3 className="font-bold text-[var(--navy-800)] mb-3">Support</h3>
                 <ul className="space-y-2 text-sm">
                   <li><Link href="/faq" className="text-[var(--navy-600)] hover:text-[var(--navy-800)]">FAQ</Link></li>
-                  <li><a href="mailto:support@parkping.net" className="text-[var(--navy-600)] hover:text-[var(--navy-800)]">Contact</a></li>
+                  <li><a href="mailto:support@cityping.net" className="text-[var(--navy-600)] hover:text-[var(--navy-800)]">Contact</a></li>
                 </ul>
               </div>
               <div>

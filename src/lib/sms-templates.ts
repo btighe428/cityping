@@ -4,7 +4,7 @@
 export const SMS_TEMPLATES = {
   // After checkout - request opt-in confirmation
   optIn: () =>
-    `ParkPing here! Reply YES to start getting alerts. STOP to cancel, HELP for help.`,
+    `CityPing here! Reply YES to start getting alerts. STOP to cancel, HELP for help.`,
 
   // After user replies YES
   confirmed: () =>
@@ -29,16 +29,16 @@ export const SMS_TEMPLATES = {
     const preview = nextMonthPreview
       ? ` ${nextMonthPreview}`
       : ''
-    return `ParkPing ${monthName} recap: ${suspensionCount} suspension day${suspensionCount !== 1 ? 's' : ''}${highlightText}.${preview} ` + String.fromCodePoint(0x1F697)
+    return `CityPing ${monthName} recap: ${suspensionCount} suspension day${suspensionCount !== 1 ? 's' : ''}${highlightText}.${preview} ` + String.fromCodePoint(0x1F697)
   },
 
   // Response to HELP keyword
   help: () =>
-    `ParkPing: NYC parking alerts. Reply MANAGE for settings, STOP to cancel. Questions? support@parkping.com`,
+    `CityPing: NYC parking alerts. Reply MANAGE for settings, STOP to cancel. Questions? support@cityping.net`,
 
   // Response to STOP keyword
   stopped: () =>
-    `You've been unsubscribed from ParkPing. Reply START to resubscribe anytime.`,
+    `You've been unsubscribed from CityPing. Reply START to resubscribe anytime.`,
 
   // Response to START/UNSTOP when subscription is active
   restarted: () =>
@@ -46,11 +46,11 @@ export const SMS_TEMPLATES = {
 
   // Response to START/UNSTOP when no active subscription
   noSubscription: () =>
-    `To receive alerts, please subscribe at parkping.com`,
+    `To receive alerts, please subscribe at cityping.net`,
 
   // Response to MANAGE keyword - includes link
   manageLink: (url: string) =>
-    `Manage your ParkPing settings: ${url} (link expires in 15 min)`,
+    `Manage your CityPing settings: ${url} (link expires in 15 min)`,
 
   // Response to YES when already confirmed
   alreadyConfirmed: () =>
@@ -58,7 +58,7 @@ export const SMS_TEMPLATES = {
 
   // Response to YES when subscription is not active
   subscriptionRequired: () =>
-    `Your subscription isn't active. Visit parkping.com to resubscribe.`,
+    `Your subscription isn't active. Visit cityping.net to resubscribe.`,
 }
 
 // Map holiday names to appropriate emojis

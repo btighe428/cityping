@@ -128,7 +128,7 @@ export async function fetchNYCWeatherForecast(): Promise<WeeklyWeatherForecast |
   try {
     const response = await fetch(NWS_FORECAST_URL, {
       headers: {
-        'User-Agent': 'ParkPing Weather Service (parkping.net)',
+        'User-Agent': 'CityPing Weather Service (cityping.net)',
         'Accept': 'application/geo+json',
       },
     })

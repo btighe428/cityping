@@ -7,7 +7,7 @@ import { generateParkingTips, formatTipsHtml, formatTipsSms } from '../src/lib/p
 const prisma = new PrismaClient()
 
 /**
- * Demo Script: Send a sample ParkPing reminder email
+ * Demo Script: Send a sample CityPing reminder email
  *
  * Usage:
  *   npx ts-node --compiler-options '{"module":"CommonJS"}' scripts/demo-email.ts <email> [date]
@@ -109,7 +109,7 @@ async function main() {
 
   console.log('')
   console.log('╔══════════════════════════════════════════════════════════════╗')
-  console.log('║                    ParkPing Demo Email                       ║')
+  console.log('║                    CityPing Demo Email                       ║')
   console.log('╚══════════════════════════════════════════════════════════════╝')
   console.log('')
   console.log(`  📅 Date:     ${dateStr}`)
