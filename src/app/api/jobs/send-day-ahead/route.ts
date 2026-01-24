@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { sendEmail } from '@/lib/resend'
 import { fetchDayAheadData, generateDayAheadEmailHtml } from '@/lib/day-ahead'
+import { JobMonitor } from '@/lib/job-monitor'
 
 // Verify cron secret for security
 function verifyCronSecret(request: NextRequest): boolean {
@@ -21,6 +22,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const jobMonitor = await JobMonitor.start('send-day-ahead')
+
   try {
     const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3001'
 
@@ -28,6 +31,7 @@ export async function GET(request: NextRequest) {
     const dayAheadData = await fetchDayAheadData()
 
     if (!dayAheadData) {
+      await jobMonitor.fail(new Error('Failed to fetch day-ahead data'))
       return NextResponse.json({
         success: false,
         error: 'Failed to fetch day-ahead data',
@@ -105,6 +109,17 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    await jobMonitor.success({
+      itemsProcessed: sent,
+      itemsFailed: errors,
+      metadata: {
+        date: dayAheadData.date,
+        eligible: uniqueEmails.size,
+        asp: dayAheadData.summary.aspSummary,
+        weather: dayAheadData.weather?.shortForecast || null,
+      },
+    })
+
     const result = {
       success: true,
       date: dayAheadData.date,
@@ -127,6 +142,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(result)
   } catch (error) {
     console.error('[Day Ahead] Job failed:', error)
+    await jobMonitor.fail(error)
     return NextResponse.json(
       {
         error: 'Job failed',

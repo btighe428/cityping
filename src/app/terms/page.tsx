@@ -1,3 +1,17 @@
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Terms of Service - NYC CityPing User Agreement",
+  description: "Read the terms and conditions for using NYC CityPing's alert service. Understand your rights, our service guarantees, and subscription policies.",
+  alternates: {
+    canonical: "https://cityping.net/terms",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+};
+
 export default function TermsPage() {
   return (
     <div className="min-h-screen bg-white">

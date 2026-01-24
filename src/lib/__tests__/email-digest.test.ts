@@ -83,6 +83,9 @@ function createMockEvents(): GroupedEvents {
     expiresAt: null,
     hypeScore: null,
     hypeFactors: null,
+    venueType: null,
+    weatherScore: null,
+    isWeatherSafe: null,
     source: mockSource,
   };
 

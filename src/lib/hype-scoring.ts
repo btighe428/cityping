@@ -347,7 +347,7 @@ export function calculateHypeScore(
  *
  * API Design:
  * ----------
- * - Model: Claude 3 Haiku (claude-3-haiku-20240307) - optimized for speed
+ * - Model: Claude Haiku 4.5 (claude-haiku-4-5-20251001) - optimized for speed
  * - Max tokens: 100 (minimal response for structured output)
  * - Response format: JSON with adjustment (-20 to +20) and reason
  *
@@ -395,7 +395,7 @@ export async function getAiHypeAdjustment(
   try {
     // ═══════════════════════════════════════════════════════════════════════════
     // ANTHROPIC API CALL
-    // Uses Claude 3 Haiku for speed-optimized inference (~0.5s typical latency).
+    // Uses Claude Haiku 4.5 for speed-optimized inference (~0.5s typical latency).
     // The prompt is structured to return JSON for reliable parsing.
     // ═══════════════════════════════════════════════════════════════════════════
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -406,7 +406,7 @@ export async function getAiHypeAdjustment(
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-3-haiku-20240307",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 100,
         messages: [
           {

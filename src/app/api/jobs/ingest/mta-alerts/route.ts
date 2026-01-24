@@ -30,6 +30,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { ingestMtaAlerts } from "@/lib/scrapers/mta";
+import { JobMonitor } from "@/lib/job-monitor";
 
 /**
  * Verify cron secret for authorization.
@@ -95,6 +96,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const jobMonitor = await JobMonitor.start("ingest-mta-alerts");
+
   try {
     const result = await ingestMtaAlerts();
 
@@ -102,10 +105,19 @@ export async function GET(request: NextRequest) {
       `[MTA Ingestion] Job completed: ${result.created} created, ${result.skipped} skipped`
     );
 
+    await jobMonitor.success({
+      itemsProcessed: result.created,
+      metadata: {
+        skipped: result.skipped,
+        total: result.created + result.skipped,
+      },
+    });
+
     return NextResponse.json(result);
   } catch (error) {
     // Log detailed error for debugging
     console.error("[MTA Ingestion] Job failed:", error);
+    await jobMonitor.fail(error);
 
     // Return sanitized error to client
     return NextResponse.json(

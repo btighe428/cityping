@@ -1,10 +1,20 @@
 // Day Ahead Email Generator
 // Comprehensive morning briefing for the upcoming day
-// Aggregates: ASP status, meters, trash, schools, weather, parking tips
+// Aggregates: ASP status, meters, trash, schools, weather, parking tips, NYC news
 
 import { DateTime } from 'luxon'
 import { fetchFullDayStatus, type FullDayStatus } from './nyc-asp-status'
 import { fetchNYCWeatherForecast, type DayForecast } from './weather'
+import { getCuratedNewsForDate } from './news-curation'
+
+export interface CuratedNewsItem {
+  id: string
+  title: string
+  url: string
+  source: string
+  summary: string
+  nycAngle: string
+}
 
 export interface DayAheadData {
   date: string
@@ -14,6 +24,7 @@ export interface DayAheadData {
   status: FullDayStatus | null
   weather: DayForecast | null
   weatherNight: DayForecast | null
+  news: CuratedNewsItem[]
   summary: {
     headline: string
     aspSummary: string
@@ -37,10 +48,15 @@ export async function fetchDayAheadData(targetDate?: string): Promise<DayAheadDa
     const dayOfWeek = tomorrow.weekday // 1=Monday, 7=Sunday
     const isWeekend = dayOfWeek >= 6
 
-    // Fetch status and weather in parallel
-    const [status, weatherForecast] = await Promise.all([
+    // Fetch status, weather, and news in parallel
+    // Note: News is curated for today (current news), while status is for tomorrow
+    const [status, weatherForecast, news] = await Promise.all([
       fetchFullDayStatus(dateStr),
       fetchNYCWeatherForecast(),
+      getCuratedNewsForDate(now.toJSDate()).catch((err) => {
+        console.error('Error fetching curated news:', err)
+        return []
+      }),
     ])
 
     // Find weather for tomorrow (day and night periods)
@@ -94,6 +110,7 @@ export async function fetchDayAheadData(targetDate?: string): Promise<DayAheadDa
       status,
       weather,
       weatherNight,
+      news,
       summary: {
         headline,
         aspSummary,
@@ -107,12 +124,24 @@ export async function fetchDayAheadData(targetDate?: string): Promise<DayAheadDa
   }
 }
 
+/**
+ * Format source name for display
+ */
+function formatSourceName(source: string): string {
+  const names: Record<string, string> = {
+    gothamist: 'Gothamist',
+    thecity: 'THE CITY',
+    patch: 'Patch',
+  }
+  return names[source] || source
+}
+
 // Generate HTML email for Day Ahead
 export function generateDayAheadEmailHtml(
   data: DayAheadData,
   manageUrl: string
 ): { subject: string; html: string; text: string } {
-  const { date, displayDate, dayOfWeek, status, weather, weatherNight, summary } = data
+  const { date, displayDate, dayOfWeek, status, weather, weatherNight, news, summary } = data
 
   // Weather emoji
   const getWeatherEmoji = (forecast: string | undefined): string => {
@@ -243,6 +272,33 @@ export function generateDayAheadEmailHtml(
         </div>
       ` : ''}
 
+      <!-- NYC News Section -->
+      ${news && news.length > 0 ? `
+        <div style="margin-bottom: 24px;">
+          <h3 style="margin: 0 0 16px 0; color: #1e3a5f; font-size: 18px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">
+            📰 NYC News You Need to Know
+          </h3>
+          ${news.map((item, i) => `
+            <div style="margin-bottom: ${i < news.length - 1 ? '16px' : '0'}; padding-bottom: ${i < news.length - 1 ? '16px' : '0'}; border-bottom: ${i < news.length - 1 ? '1px solid #f1f5f9' : 'none'};">
+              <a href="${item.url}" style="color: #1e40af; font-weight: 600; font-size: 15px; text-decoration: none; display: block; margin-bottom: 4px;">
+                ${item.title}
+              </a>
+              <div style="font-size: 11px; color: #64748b; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
+                ${formatSourceName(item.source)}
+              </div>
+              <p style="margin: 0 0 8px 0; font-size: 14px; color: #374151; line-height: 1.5;">
+                ${item.summary}
+              </p>
+              ${item.nycAngle ? `
+                <p style="margin: 0; font-size: 13px; color: #059669; font-style: italic;">
+                  💡 ${item.nycAngle}
+                </p>
+              ` : ''}
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+
       <!-- Pro Tips -->
       <div style="background: #fefce8; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
         <h3 style="margin: 0 0 8px 0; color: #854d0e; font-size: 14px;">
@@ -294,6 +350,16 @@ ${weather.temperature}°${weather.temperatureUnit} — ${weather.shortForecast}
 ${weatherNight ? `Tonight: ${weatherNight.temperature}°${weatherNight.temperatureUnit}, ${weatherNight.shortForecast}` : ''}
 ${weather.snowAmount.hasSnow ? `\n❄️ Snow alert: ${weather.snowAmount.description}` : ''}
 ` : ''}
+${news && news.length > 0 ? `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+NYC NEWS YOU NEED TO KNOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${news.map((item, i) => `${i + 1}. ${item.title}
+   Source: ${formatSourceName(item.source)}
+   ${item.summary}
+   ${item.nycAngle ? `💡 ${item.nycAngle}` : ''}
+   Read more: ${item.url}
+`).join('\n')}` : ''}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 💡 ${summary.canSkipShuffle

@@ -7,8 +7,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendEmail } from "@/lib/resend";
-import { nycToday, NYCTodayData, NYCTodayEvent } from "@/lib/email-templates-v2";
+import { nycToday, NYCTodayData, NYCTodayEvent, NYCTodayNewsItem } from "@/lib/email-templates-v2";
+import { getCuratedNewsForDate } from "@/lib/news-curation";
+import { fetchNYCWeatherForecast } from "@/lib/weather";
 import { DateTime } from "luxon";
+
+function getWeatherEmoji(forecast: string): string {
+  const f = forecast.toLowerCase();
+  if (f.includes("snow") || f.includes("flurries")) return "❄️";
+  if (f.includes("thunder") || f.includes("storm")) return "⛈️";
+  if (f.includes("rain") || f.includes("shower")) return "🌧️";
+  if (f.includes("cloud") && f.includes("sun")) return "⛅";
+  if (f.includes("cloud") || f.includes("overcast")) return "☁️";
+  if (f.includes("fog") || f.includes("mist")) return "🌫️";
+  if (f.includes("wind")) return "💨";
+  if (f.includes("clear") || f.includes("sunny")) return "☀️";
+  return "🌤️";
+}
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const email = req.nextUrl.searchParams.get("email");
@@ -22,13 +37,51 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     const nyNow = DateTime.now().setZone("America/New_York");
 
-    // Fetch some evergreen events for realistic content
-    const evergreenEvents = await prisma.evergreenEvent.findMany({
-      where: { isActive: true },
-      take: 10,
-    });
+    // Fetch real data in parallel
+    const [evergreenEvents, curatedNews, weatherForecast] = await Promise.all([
+      prisma.evergreenEvent.findMany({
+        where: { isActive: true },
+        take: 10,
+      }),
+      getCuratedNewsForDate(nyNow.toJSDate()),
+      fetchNYCWeatherForecast(),
+    ]);
 
     console.log("[Test Daily] Found", evergreenEvents.length, "evergreen events");
+    console.log("[Test Daily] Found", curatedNews.length, "curated news stories");
+
+    // Format news for email
+    const newsItems: NYCTodayNewsItem[] = curatedNews.map((article) => ({
+      id: article.id,
+      title: article.title,
+      summary: article.summary,
+      nycAngle: article.nycAngle || undefined,
+      source: article.source,
+      url: article.url,
+    }));
+
+    // Get real weather if available
+    const todayDateStr = nyNow.toISODate();
+    const todayWeatherDay = weatherForecast?.days.find(
+      (d) => d.date === todayDateStr && !d.name.includes("Night")
+    );
+    const tonightWeather = weatherForecast?.days.find(
+      (d) => d.date === todayDateStr && d.name.includes("Night")
+    );
+
+    const weather = todayWeatherDay
+      ? {
+          high: todayWeatherDay.temperature,
+          low: tonightWeather?.temperature || todayWeatherDay.temperature - 10,
+          icon: getWeatherEmoji(todayWeatherDay.shortForecast),
+          summary: todayWeatherDay.shortForecast,
+        }
+      : {
+          high: 51,
+          low: 42,
+          icon: "☀️",
+          summary: "Sunny",
+        };
 
     // What Matters Today - transit, parking, urgent
     const whatMattersToday: NYCTodayEvent[] = [
@@ -102,12 +155,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     const todayData: NYCTodayData = {
       date: nyNow.toJSDate(),
-      weather: {
-        high: 51,
-        low: 42,
-        icon: "☀️",
-        summary: "Sunny",
-      },
+      weather,
+      news: newsItems.length > 0 ? newsItems : undefined,
       whatMattersToday,
       dontMiss: dontMiss ? {
         title: `${dontMiss.name} registration opens 10am`,
@@ -138,11 +187,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({
       success: true,
       sections: {
+        news: newsItems.length,
         whatMattersToday: whatMattersToday.length,
         dontMiss: !!todayData.dontMiss,
         tonightInNYC: tonightInNYC.length,
         lookAhead: lookAhead.length,
       },
+      weather: weather.summary,
       emailId: result.id,
     });
   } catch (error) {

@@ -522,6 +522,12 @@ export function prepareForDatabase(
     neighborhoods: event.neighborhoods,
     metadata: event.metadata as Prisma.JsonValue,
     expiresAt: event.endsAt || event.startsAt, // Expire after event ends
+    // Hype score fields - will be calculated by inference engine
+    hypeScore: null,
+    hypeFactors: null,
+    venueType: null,
+    weatherScore: null,
+    isWeatherSafe: null,
   }));
 }
 

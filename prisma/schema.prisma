@@ -632,6 +632,44 @@ model CityEvent {
   @@map("city_events")
 }
 
+// ============================================================================
+// NEWS ARTICLES - Daily NYC News Curation
+// ============================================================================
+
+/// News article scraped from NYC news sources.
+/// Stores raw articles and AI-generated summaries for day-ahead email.
+model NewsArticle {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Source info
+  source     String // "gothamist" | "thecity" | "patch"
+  externalId String @map("external_id") // URL or GUID for dedup
+  url        String
+
+  // Raw content
+  title       String
+  snippet     String? // RSS description/excerpt
+  publishedAt DateTime @map("published_at") @db.Timestamptz
+  category    String?  // If available from RSS
+  author      String?
+  imageUrl    String?  @map("image_url")
+
+  // AI-generated content (populated after curation)
+  summary     String? // 1-2 sentence summary
+  nycAngle    String? @map("nyc_angle") // "Why it matters" commentary
+
+  // Curation tracking
+  isSelected  Boolean   @default(false) @map("is_selected") // Top 3 pick for the day
+  curatedFor  DateTime? @map("curated_for") @db.Date // Date this was selected for
+  curatedAt   DateTime? @map("curated_at") @db.Timestamptz
+
+  @@unique([source, externalId])
+  @@index([publishedAt])
+  @@index([isSelected, curatedFor])
+  @@map("news_articles")
+}
+
 /// Pre-seeded annual NYC events that recur each year
 /// AI monitors for official date announcements and creates CityEvent instances
 model EvergreenEvent {
@@ -661,4 +699,175 @@ model EvergreenEvent {
   instances CityEvent[]
 
   @@map("evergreen_events")
+}
+
+// ============================================================================
+// NEW SCRAPERS - Museums, 311, Air Quality, Dining, Parks
+// ============================================================================
+
+/// Free museum day configuration - static, config-driven (not scraped)
+/// Stores recurring free admission schedules for NYC museums
+model MuseumFreeDay {
+  id        String  @id @default(cuid())
+  museum    String  // "MoMA", "Met", "Brooklyn Museum"
+  dayOfWeek Int     @map("day_of_week") // 0=Sun, 1=Mon, etc.
+  weekOfMonth Int?  @map("week_of_month") // 1=first, 2=second, etc. Null = every week
+  startTime String? @map("start_time") // "17:30" (24hr format)
+  endTime   String? @map("end_time") // "21:00"
+  notes     String? // "Pay what you wish", "Free admission"
+  address   String?
+  url       String?
+  isActive  Boolean @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@unique([museum, dayOfWeek, weekOfMonth])
+  @@map("museum_free_days")
+}
+
+/// NYC 311 service alerts - water outages, street closures, etc.
+/// Scraped from NYC Open Data 311 API
+model ServiceAlert {
+  id            String    @id @default(cuid())
+  externalId    String    @unique @map("external_id") // 311 unique_key
+  complaintType String    @map("complaint_type") // "Water Outage", "Street Closure"
+  descriptor    String?   // Additional detail
+  address       String?
+  borough       String?
+  zipCode       String?   @map("zip_code")
+  latitude      Float?
+  longitude     Float?
+  status        String    // "Open", "Closed", "In Progress"
+  severity      String    @default("medium") // "low", "medium", "high", "critical"
+  createdDate   DateTime  @map("created_date") @db.Timestamptz
+  resolvedDate  DateTime? @map("resolved_date") @db.Timestamptz
+  fetchedAt     DateTime  @default(now()) @map("fetched_at") @db.Timestamptz
+
+  @@index([complaintType, status])
+  @@index([borough])
+  @@index([createdDate])
+  @@map("service_alerts")
+}
+
+/// Air quality readings from AirNow API
+/// Includes current AQI and forecast
+model AirQualityReading {
+  id           String   @id @default(cuid())
+  zipCode      String   @map("zip_code")
+  aqi          Int      // 0-500 scale
+  category     String   // "Good", "Moderate", "Unhealthy for Sensitive Groups", etc.
+  pollutant    String?  // "PM2.5", "Ozone"
+  color        String?  // Hex color code for category
+  forecastDate DateTime @map("forecast_date") @db.Date
+  isAlert      Boolean  @default(false) @map("is_alert") // True if AQI > 100
+  fetchedAt    DateTime @default(now()) @map("fetched_at") @db.Timestamptz
+
+  @@unique([zipCode, forecastDate])
+  @@index([forecastDate])
+  @@index([isAlert])
+  @@map("air_quality_readings")
+}
+
+/// Dining deals - Restaurant Week, new openings, specials
+/// Scraped from multiple RSS sources
+model DiningDeal {
+  id           String    @id @default(cuid())
+  externalId   String    @unique @map("external_id") // URL hash for dedup
+  source       String    // "restaurant-week", "eater", "infatuation"
+  restaurant   String
+  neighborhood String?
+  borough      String?
+  cuisine      String?
+  dealType     String    @map("deal_type") // "prix-fixe", "opening", "special", "deal"
+  title        String
+  description  String?
+  price        String?   // "$30 lunch", "$45 dinner"
+  startDate    DateTime? @map("start_date") @db.Date
+  endDate      DateTime? @map("end_date") @db.Date
+  url          String
+  imageUrl     String?   @map("image_url")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  fetchedAt    DateTime  @default(now()) @map("fetched_at") @db.Timestamptz
+
+  @@index([source])
+  @@index([dealType])
+  @@index([startDate, endDate])
+  @@map("dining_deals")
+}
+
+// ============================================================================
+// JOB MONITORING - Health tracking for cron jobs
+// ============================================================================
+
+/// Job execution status for tracking cron job health
+enum JobStatus {
+  running
+  success
+  failed
+  timeout
+
+  @@map("job_status")
+}
+
+/// Tracks execution history of all cron jobs for health monitoring.
+/// Enables detection of stale jobs (jobs that haven't run in expected interval)
+/// and failure alerting. Critical for "running forever" assurance.
+model JobRun {
+  id          String    @id @default(cuid())
+  jobName     String    @map("job_name") // "send-daily-pulse", "ingest-mta-alerts"
+  status      JobStatus @default(running)
+  startedAt   DateTime  @default(now()) @map("started_at") @db.Timestamptz
+  completedAt DateTime? @map("completed_at") @db.Timestamptz
+  durationMs  Int?      @map("duration_ms")
+
+  // Results
+  itemsProcessed Int?    @map("items_processed")
+  itemsFailed    Int?    @map("items_failed")
+  errorMessage   String? @map("error_message")
+  metadata       Json    @default("{}") // Flexible storage for job-specific data
+
+  @@index([jobName, startedAt])
+  @@index([status])
+  @@map("job_runs")
+}
+
+/// Configuration for job health monitoring.
+/// Defines expected run frequency and alerting thresholds.
+model JobConfig {
+  jobName           String @id @map("job_name")
+  displayName       String @map("display_name")
+  expectedFrequency String @map("expected_frequency") // "5m", "1h", "24h"
+  alertAfterMissed  Int    @default(2) @map("alert_after_missed") // Alert after N missed runs
+  isEnabled         Boolean @default(true) @map("is_enabled")
+  lastAlertedAt     DateTime? @map("last_alerted_at") @db.Timestamptz
+
+  @@map("job_configs")
+}
+
+/// NYC Parks events - free outdoor events, fitness classes, tours
+/// Scraped from NYC Parks calendar
+model ParkEvent {
+  id          String    @id @default(cuid())
+  externalId  String    @unique @map("external_id") // Event ID from parks calendar
+  name        String
+  description String?
+  parkName    String    @map("park_name")
+  borough     String?
+  address     String?
+  latitude    Float?
+  longitude   Float?
+  date        DateTime  @db.Date
+  startTime   String?   @map("start_time") // "10:00"
+  endTime     String?   @map("end_time") // "12:00"
+  category    String?   // "Fitness", "Nature", "Sports", "Arts", "Tours"
+  isFree      Boolean   @default(true) @map("is_free")
+  url         String?
+  imageUrl    String?   @map("image_url")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  fetchedAt   DateTime  @default(now()) @map("fetched_at") @db.Timestamptz
+
+  @@index([date])
+  @@index([borough])
+  @@index([category])
+  @@map("park_events")
 }

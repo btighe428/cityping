@@ -1,3 +1,17 @@
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Privacy Policy - How CityPing Protects Your Data",
+  description: "Learn how NYC CityPing collects, uses, and protects your personal information. We collect minimal data and never sell your information to third parties.",
+  alternates: {
+    canonical: "https://cityping.net/privacy",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+};
+
 export default function PrivacyPage() {
   return (
     <div className="min-h-screen bg-white">

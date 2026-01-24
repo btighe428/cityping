@@ -2,6 +2,7 @@ import ZipCodeSignupForm from '@/components/ZipCodeSignupForm'
 import FAQ from '@/components/FAQ'
 import UpcomingSuspensions from '@/components/UpcomingSuspensions'
 import EmergencyAlert from '@/components/EmergencyAlert'
+import { HomepageSchemas } from '@/components/seo/StructuredData'
 import { Suspense } from 'react'
 
 // Module definitions for the 6-module grid
@@ -58,6 +59,10 @@ const modules = [
 
 export default function Home() {
   return (
+    <>
+      {/* Structured Data for SEO */}
+      <HomepageSchemas />
+
     <div className="min-h-screen flex flex-col">
       {/* Emergency Alert Banner */}
       <EmergencyAlert />
@@ -360,5 +365,6 @@ export default function Home() {
         </div>
       </footer>
     </div>
+    </>
   )
 }

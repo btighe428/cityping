@@ -36,7 +36,7 @@
 
 import { prisma } from "../db";
 import { matchEventToUsers, MatchableEvent } from "../matching";
-import { MtaAlertSchema, MtaAlert } from "../schemas/mta-alert.schema";
+import { MtaAlertSchema, MtaAlert as ValidatedMtaAlert } from "../schemas/mta-alert.schema";
 import { sendScraperAlert, ScraperError } from "../scraper-alerts";
 
 /**
