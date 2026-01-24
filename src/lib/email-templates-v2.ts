@@ -936,6 +936,15 @@ export interface NYCTodayEvent {
   venue?: string;
 }
 
+export interface NYCTodayNewsItem {
+  id: string;
+  title: string;
+  summary: string;
+  nycAngle?: string;
+  source: string;
+  url: string;
+}
+
 export interface NYCTodayData {
   date: Date;
   weather?: {
@@ -944,6 +953,7 @@ export interface NYCTodayData {
     icon: string;
     summary: string;
   };
+  news?: NYCTodayNewsItem[]; // AI-curated top 3 NYC news stories
   whatMattersToday: NYCTodayEvent[]; // Transit, parking, urgent items
   dontMiss?: {
     title: string;
@@ -963,7 +973,7 @@ export interface NYCTodayData {
 }
 
 export function nycToday(data: NYCTodayData): { subject: string; html: string; text: string } {
-  const { date, weather, whatMattersToday, dontMiss, tonightInNYC, lookAhead, user } = data;
+  const { date, weather, news, whatMattersToday, dontMiss, tonightInNYC, lookAhead, user } = data;
 
   const appBaseUrl = process.env.APP_BASE_URL || "https://nycping-app.vercel.app";
 
@@ -978,6 +988,66 @@ export function nycToday(data: NYCTodayData): { subject: string; html: string; t
     month: "short",
     day: "numeric",
   });
+
+  // News section - AI-curated top stories
+  const SOURCE_LABELS: Record<string, string> = {
+    gothamist: "Gothamist",
+    thecity: "THE CITY",
+    patch: "Patch",
+  };
+
+  const newsHtml = news && news.length > 0 ? `
+    <div style="margin-bottom: ${SPACING.lg};">
+      <h2 style="
+        margin: 0 0 ${SPACING.md} 0;
+        font-size: ${TYPOGRAPHY.sizes.h2};
+        color: ${COLORS.navy[800]};
+        padding-bottom: ${SPACING.sm};
+        border-bottom: 2px solid ${COLORS.navy[200]};
+      ">📰 NYC News</h2>
+      ${news.map((item, index) => `
+        <div style="
+          padding: ${SPACING.md} 0;
+          ${index < news.length - 1 ? `border-bottom: 1px solid ${COLORS.navy[200]};` : ''}
+        ">
+          <a href="${item.url}" style="
+            font-size: ${TYPOGRAPHY.sizes.body};
+            color: ${COLORS.navy[900]};
+            font-weight: ${TYPOGRAPHY.weights.semibold};
+            text-decoration: none;
+            line-height: 1.4;
+            display: block;
+            margin-bottom: ${SPACING.xs};
+          ">${item.title}</a>
+          <div style="
+            font-size: 11px;
+            color: ${COLORS.navy[400]};
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: ${TYPOGRAPHY.weights.medium};
+            margin-bottom: ${SPACING.sm};
+          ">${SOURCE_LABELS[item.source] || item.source}</div>
+          <p style="
+            margin: 0 0 ${SPACING.sm} 0;
+            font-size: ${TYPOGRAPHY.sizes.body};
+            color: ${COLORS.navy[700]};
+            line-height: ${TYPOGRAPHY.lineHeights.relaxed};
+          ">${item.summary}</p>
+          ${item.nycAngle ? `
+            <div style="
+              background: #fef3c7;
+              padding: ${SPACING.sm} ${SPACING.md};
+              border-radius: 6px;
+              font-size: ${TYPOGRAPHY.sizes.small};
+              color: #92400e;
+              font-style: italic;
+              line-height: 1.5;
+            ">💡 ${item.nycAngle}</div>
+          ` : ''}
+        </div>
+      `).join('')}
+    </div>
+  ` : '';
 
   // What Matters Today section
   const whatMattersHtml = whatMattersToday.length > 0 ? `
@@ -1174,6 +1244,8 @@ export function nycToday(data: NYCTodayData): { subject: string; html: string; t
           ` : ''}
         </div>
 
+        ${newsHtml}
+
         ${whatMattersHtml}
 
         ${dontMissHtml}
@@ -1190,11 +1262,17 @@ export function nycToday(data: NYCTodayData): { subject: string; html: string; t
   `;
 
   // Plain text
+  const newsText = news && news.length > 0 ? `📰 TOP STORIES
+${news.map(n => `• ${n.title} (${SOURCE_LABELS[n.source] || n.source})
+  ${n.summary}${n.nycAngle ? `\n  💡 ${n.nycAngle}` : ''}`).join('\n\n')}
+
+` : '';
+
   const text = `
 NYC TODAY — ${shortDate}
 ${weather ? `${weather.icon} ${weather.low}° → ${weather.high}°` : ''}
 
-⚡ WHAT MATTERS TODAY
+${newsText}⚡ WHAT MATTERS TODAY
 ${whatMattersToday.map(e => `• ${e.title}${e.description ? ` — ${e.description}` : ''}`).join('\n')}
 
 ${dontMiss ? `🎯 DON'T MISS

@@ -151,22 +151,58 @@ export async function getReferralCode(userId: string): Promise<string | null> {
 }
 
 /**
+ * Build hype badge for sample sales - matches reference format
+ * "🔥 HOT" in red, "Worth it" in blue, "Meh" in gray with score
+ */
+function buildHypeBadge(score: number | undefined | null): string {
+  if (!score) return "";
+
+  let bgColor = "#6b7280"; // gray-500
+  let label = "Meh";
+
+  if (score >= 85) {
+    bgColor = "#dc2626"; // red-600
+    label = "🔥 HOT";
+  } else if (score >= 65) {
+    bgColor = "#2563eb"; // blue-600
+    label = "Worth it";
+  }
+
+  return `<span style="background: ${bgColor}; color: white; font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 4px; margin-left: 8px; vertical-align: middle; display: inline-block;">${label} ${score}</span>`;
+}
+
+/**
+ * Build indoor/weather indicator for events
+ */
+function buildVenueIndicator(venueType: string | undefined | null): string {
+  if (!venueType) return "";
+
+  if (venueType === "INDOOR") {
+    return `<div style="color: #16a34a; font-size: 12px; margin-top: 4px;">✓ Indoor</div>`;
+  } else if (venueType === "OUTDOOR") {
+    return `<div style="color: #7c3aed; font-size: 12px; margin-top: 4px;">☀️ Perfect weather</div>`;
+  }
+  return "";
+}
+
+/**
  * Builds the HTML email body for the daily digest.
  *
  * Architecture:
- * - Sections are rendered per module with icon/name headers
- * - Events within each section are rendered as table rows
+ * - NYC TODAY header with date (matches reference)
+ * - Sections are rendered per module with emoji headers and border styling
+ * - Events include hype badges (HOT/Worth it/Meh) and indoor indicators
  * - Feedback links (thumbs up/down) for each event when tokens provided
- * - Upgrade CTA is included to drive free-to-premium conversion
- * - Referral promotion section (when code provided) to drive viral growth
+ * - Upgrade CTA with gray background box
+ * - Referral promotion section with GREEN background
  * - Unsubscribe/preferences links for compliance and UX
  *
  * Styling Notes:
  * - All styles are inline for maximum email client compatibility
  * - System font stack for consistent rendering across platforms
  * - Max-width container for readability on desktop
- * - Feedback buttons use minimal styling to avoid chartjunk
- * - Referral section uses muted background to differentiate from main content
+ * - Section headers have bottom borders matching reference
+ * - Matches reference screenshot design exactly
  *
  * @param events - Events grouped by module ID
  * @param userName - Optional user name for personalization (future use)
@@ -184,6 +220,13 @@ export function buildDigestHtml(
 ): string {
   const appBaseUrl = process.env.APP_BASE_URL || "http://localhost:3000";
 
+  // Format today's date
+  const today = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+
   const sections = Object.entries(events)
     .map(([moduleId, moduleEvents]) => {
       const module = moduleEvents[0]?.source.module;
@@ -196,33 +239,48 @@ export function buildDigestHtml(
           const feedbackLinksHtml =
             userId && token
               ? `
-                <td style="width: 60px; text-align: right; white-space: nowrap; vertical-align: top; padding: 8px 0;">
+                <span style="margin-left: 12px;">
                   <a href="${appBaseUrl}/api/feedback?token=${escapeHtml(token)}&amp;rating=up"
-                     style="text-decoration: none; font-size: 16px; padding: 4px;"
-                     title="This was helpful">&#128077;</a>
+                     style="text-decoration: none; font-size: 14px;"
+                     title="This was helpful">👍</a>
                   <a href="${appBaseUrl}/api/feedback?token=${escapeHtml(token)}&amp;rating=down"
-                     style="text-decoration: none; font-size: 16px; padding: 4px;"
-                     title="Not relevant">&#128078;</a>
-                </td>
+                     style="text-decoration: none; font-size: 14px; margin-left: 4px;"
+                     title="Not relevant">👎</a>
+                </span>
               `
               : "";
 
+          // Get hype score and venue type from metadata if available
+          const metadata = e.metadata as Record<string, unknown> | null;
+          const hypeScore = (e as unknown as { hypeScore?: number }).hypeScore ??
+                           (metadata?.hypeScore as number | undefined);
+          const venueType = (e as unknown as { venueType?: string }).venueType ??
+                           (metadata?.venueType as string | undefined);
+          const location = metadata?.location as string | undefined;
+
+          const hypeBadge = buildHypeBadge(hypeScore);
+          const venueIndicator = buildVenueIndicator(venueType);
+
           return `
             <tr>
-              <td style="padding: 8px 0; border-bottom: 1px solid #eee;">
-                <strong>${escapeHtml(e.title)}</strong>
-                ${e.body ? `<br><span style="color: #666;">${escapeHtml(e.body)}</span>` : ""}
+              <td style="padding: 12px 0; border-bottom: 1px solid #e5e7eb;">
+                <div style="font-weight: 600; color: #111827;">
+                  ${escapeHtml(e.title)}${hypeBadge}
+                </div>
+                ${location ? `<div style="font-size: 13px; color: #6b7280; margin-top: 4px;">📍 ${escapeHtml(location)}</div>` : ""}
+                ${e.body ? `<div style="font-size: 13px; color: #4b5563; margin-top: 4px; line-height: 1.5;">${escapeHtml(e.body)}</div>` : ""}
+                ${venueIndicator}
+                ${feedbackLinksHtml ? `<div style="margin-top: 4px;">${feedbackLinksHtml}</div>` : ""}
               </td>
-              ${feedbackLinksHtml}
             </tr>
           `;
         })
         .join("");
 
       return `
-        <div style="margin-bottom: 24px;">
-          <h2 style="color: #1a1a1a; font-size: 18px; margin: 0 0 12px 0;">
-            ${module.icon} ${escapeHtml(module.name)} (${moduleEvents.length})
+        <div style="margin-bottom: 28px;">
+          <h2 style="color: #1e3a5f; font-size: 18px; margin: 0 0 12px 0; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0;">
+            ${module.icon} ${escapeHtml(module.name)}
           </h2>
           <table style="width: 100%; border-collapse: collapse;">
             ${eventItems}
@@ -239,31 +297,50 @@ export function buildDigestHtml(
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>NYC Today - ${today}</title>
     </head>
-    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <h1 style="color: #1a1a1a; font-size: 24px; margin-bottom: 24px;">
-        Your NYC Alerts
-      </h1>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8fafc;">
+
+      <!-- Header -->
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h1 style="color: #1e3a5f; font-size: 28px; margin: 0;">🗽 NYC TODAY</h1>
+        <div style="color: #64748b; font-size: 14px; margin-top: 4px;">${today}</div>
+      </div>
+
+      <!-- Intro -->
+      <div style="color: #475569; font-size: 15px; margin-bottom: 24px; line-height: 1.5;">
+        Here's your NYC rundown for today.
+      </div>
 
       ${sections}
 
-      <div style="margin-top: 32px; padding-top: 24px; border-top: 2px solid #eee;">
-        <p style="color: #666; font-size: 14px;">
-          <strong>Get alerts instantly via SMS</strong><br>
-          Premium users received these alerts yesterday.<br>
-          <a href="${appBaseUrl}/dashboard?upgrade=true" style="color: #0066cc;">
-            Upgrade for $7/mo
-          </a>
-        </p>
+      <!-- Upgrade CTA -->
+      <div style="margin-top: 32px; padding: 20px; background: #f1f5f9; border-radius: 12px; text-align: center;">
+        <div style="font-weight: bold; color: #1e3a5f; margin-bottom: 8px;">
+          ⚡ Get alerts instantly via SMS
+        </div>
+        <div style="color: #64748b; font-size: 14px; margin-bottom: 12px;">
+          Premium users got these alerts yesterday.
+        </div>
+        <a href="${appBaseUrl}/dashboard?upgrade=true"
+           style="display: inline-block; background: #1e3a5f; color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+          Upgrade for $7/mo
+        </a>
       </div>
 
       ${
         referralCode
           ? `
-      <div style="background: #f5f5f5; padding: 16px; margin-top: 24px; border-radius: 8px;">
-        <strong style="color: #1a1a1a;">Know someone who'd love NYC alerts?</strong><br>
-        <span style="color: #666;">Share your link and get 1 month free when they subscribe!</span><br>
-        <a href="${appBaseUrl}/r/${escapeHtml(referralCode)}" style="color: #0066cc; word-break: break-all;">
+      <!-- Referral Section - GREEN per brand reference -->
+      <div style="background: #16a34a; color: white; padding: 20px; margin-top: 24px; border-radius: 12px; text-align: center;">
+        <div style="font-size: 18px; font-weight: bold; margin-bottom: 8px;">
+          ✉️ Know someone who'd love this?
+        </div>
+        <div style="font-size: 14px; opacity: 0.9; margin-bottom: 12px;">
+          Share your link and get 1 month free when they subscribe!
+        </div>
+        <a href="${appBaseUrl}/r/${escapeHtml(referralCode)}"
+           style="display: inline-block; background: rgba(255,255,255,0.15); border: 2px solid white; color: white; padding: 10px 24px; border-radius: 6px; text-decoration: none; font-weight: 500; font-size: 13px;">
           ${appBaseUrl}/r/${escapeHtml(referralCode)}
         </a>
       </div>
@@ -271,10 +348,13 @@ export function buildDigestHtml(
           : ""
       }
 
-      <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #eee; font-size: 12px; color: #999;">
-        <a href="${appBaseUrl}/preferences" style="color: #999;">Manage preferences</a> |
-        <a href="${appBaseUrl}/unsubscribe" style="color: #999;">Unsubscribe</a>
+      <!-- Footer -->
+      <div style="margin-top: 32px; padding-top: 20px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8; text-align: center;">
+        <a href="${appBaseUrl}/preferences" style="color: #64748b;">Manage preferences</a> ·
+        <a href="${appBaseUrl}/unsubscribe" style="color: #64748b;">Unsubscribe</a>
+        <div style="margin-top: 8px;">NYCPing · The definitive NYC alerts platform</div>
       </div>
+
     </body>
     </html>
   `;
@@ -283,22 +363,23 @@ export function buildDigestHtml(
 /**
  * Builds the subject line for the daily digest email.
  *
- * Format: "Your NYC Alerts - Jan 1 (5 new)"
+ * Format: "🗽 NYC Today: Jan 1 — X things worth knowing"
  *
  * The subject includes:
- * - Brand identifier for recognition
+ * - NYC Today branding with emoji
  * - Date for temporal context
- * - Event count for urgency/value signaling
+ * - Event count phrased as value proposition
  *
  * @param eventCount - Total number of events in the digest
  * @returns Formatted subject line string
  */
 export function buildDigestSubject(eventCount: number): string {
   const today = new Date().toLocaleDateString("en-US", {
+    weekday: "short",
     month: "short",
     day: "numeric",
   });
-  return `Your NYC Alerts - ${today} (${eventCount} new)`;
+  return `🗽 NYC Today: ${today} — ${eventCount} things worth knowing`;
 }
 
 /**
