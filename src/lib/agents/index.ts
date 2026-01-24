@@ -29,36 +29,49 @@
  *   const result = await orchestrateDigest();
  */
 
-// Export all from each agent module
-export * from "./robustness-agent";
-export * from "./data-quality-agent";
-export * from "./llm-summarizer-agent";
-export * from "./agent-orchestrator";
-export * from "./subject-line-nano-app";
-
-// Convenient named exports for main entry points
-export {
-  orchestrateDigest,
-  checkOrchestrationHealth,
-  getFullQualityReport,
-} from "./agent-orchestrator";
-
-export {
-  selectBestContent,
-  getDataQualityReport,
-} from "./data-quality-agent";
-
-export {
-  generateDigestContent,
-  generateSubjectLine,
-} from "./llm-summarizer-agent";
-
+// Robustness Agent - data freshness and healing
 export {
   healStaleData,
   checkDataFreshness,
   getSystemHealth,
+  type HealingAction,
+  type DataFreshnessStatus,
+  type SourceHealth,
 } from "./robustness-agent";
 
+// Data Quality Agent - content selection and scoring
+export {
+  selectBestContent,
+  getDataQualityReport,
+  generateDataQualityReport,
+  type ContentSelection,
+  type QualityScore,
+  type SelectionConfig,
+  type DataSource,
+  type DataQualityHealingAction,
+  type Anomaly,
+  type DataQualityReport,
+} from "./data-quality-agent";
+
+// LLM Summarizer Agent - AI-powered content generation
+export {
+  generateDigestContent,
+  generateSubjectLine,
+  type DigestContent,
+  type SummarizationConfig,
+} from "./llm-summarizer-agent";
+
+// Agent Orchestrator - pipeline coordination
+export {
+  orchestrateDigest,
+  checkOrchestrationHealth,
+  getFullQualityReport,
+  type OrchestrationConfig,
+  type OrchestrationResult,
+  type OrchestrationMetrics,
+} from "./agent-orchestrator";
+
+// Subject Line Nano App
 export {
   generateNanoAppSubject,
   generateTemplateSubject,

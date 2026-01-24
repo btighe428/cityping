@@ -135,18 +135,18 @@ function extractHousingBite(selection: ContentSelection): SubjectLineBite | null
   // Housing data would come from AlertEvents with housing module
   // For now, check if there's housing-related news
   const housingNews = selection.news.find(n =>
-    n.item.title.toLowerCase().includes("housing") ||
-    n.item.title.toLowerCase().includes("lottery") ||
-    n.item.title.toLowerCase().includes("affordable") ||
-    n.item.title.toLowerCase().includes("rent")
+    n.title.toLowerCase().includes("housing") ||
+    n.title.toLowerCase().includes("lottery") ||
+    n.title.toLowerCase().includes("affordable") ||
+    n.title.toLowerCase().includes("rent")
   );
 
   if (housingNews) {
     return {
       category: "housing",
       emoji: CATEGORY_EMOJI.housing,
-      hook: housingNews.item.title.includes("lottery") ? "New Lottery" : "Housing",
-      specifics: housingNews.item.title.slice(0, 60),
+      hook: housingNews.title.includes("lottery") ? "New Lottery" : "Housing",
+      specifics: housingNews.title.slice(0, 60),
       priority: 8,
     };
   }
@@ -161,16 +161,16 @@ function extractTransitBite(selection: ContentSelection): SubjectLineBite | null
   if (selection.alerts.length === 0) return null;
 
   const topAlert = selection.alerts[0];
-  const metadata = topAlert.item.metadata as Record<string, unknown> | null;
-  const lines = (metadata?.affectedLines as string[]) || [];
-  const linesStr = lines.slice(0, 3).join("/");
+  // Extract line info from title (e.g., "A/C delays due to...")
+  const lineMatch = topAlert.title.match(/^([A-Z0-9/]+)/i);
+  const linesStr = lineMatch ? lineMatch[1] : "";
 
   return {
     category: "transit",
     emoji: CATEGORY_EMOJI.transit,
     hook: linesStr ? `${linesStr} delays` : "Service Alert",
-    specifics: topAlert.item.title?.slice(0, 50) || "Check MTA for details",
-    priority: topAlert.score.overall > 80 ? 9 : 6,
+    specifics: topAlert.title?.slice(0, 50) || "Check MTA for details",
+    priority: topAlert.score > 80 ? 9 : 6,
   };
 }
 
@@ -181,14 +181,13 @@ function extractEventsBite(selection: ContentSelection): SubjectLineBite | null 
   if (selection.events.length === 0) return null;
 
   const topEvent = selection.events[0];
-  const isFree = topEvent.item.isFree;
 
   return {
     category: "events",
-    emoji: isFree ? CATEGORY_EMOJI.free : CATEGORY_EMOJI.events,
-    hook: isFree ? "Free Event" : "Event",
-    specifics: `${topEvent.item.name} at ${topEvent.item.parkName}`,
-    priority: isFree ? 7 : 5,
+    emoji: CATEGORY_EMOJI.free, // Assume park events are free
+    hook: "Free Event",
+    specifics: topEvent.name.slice(0, 60),
+    priority: 7,
   };
 }
 
@@ -203,8 +202,8 @@ function extractDealsBite(selection: ContentSelection): SubjectLineBite | null {
   return {
     category: "deals",
     emoji: CATEGORY_EMOJI.deals,
-    hook: topDeal.item.dealType || "Deal",
-    specifics: `${topDeal.item.restaurant} ${topDeal.item.borough || ""}`.trim(),
+    hook: "Deal",
+    specifics: topDeal.brand.slice(0, 60),
     priority: 5,
   };
 }
@@ -221,8 +220,8 @@ function extractNewsBite(selection: ContentSelection): SubjectLineBite | null {
     category: "news",
     emoji: CATEGORY_EMOJI.news,
     hook: "Top Story",
-    specifics: topNews.item.title.slice(0, 60),
-    priority: topNews.score.overall > 85 ? 8 : 6,
+    specifics: topNews.title.slice(0, 60),
+    priority: topNews.score > 85 ? 8 : 6,
   };
 }
 
@@ -274,7 +273,7 @@ export async function generateNanoAppSubject(
     weather: weatherBite,
     topBite,
     allBites: allBites.slice(0, 3),
-    newsHeadlines: selection.news.slice(0, 3).map(n => n.item.title),
+    newsHeadlines: selection.news.slice(0, 3).map(n => n.title),
     alertCount: selection.alerts.length,
   };
 

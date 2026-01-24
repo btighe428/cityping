@@ -18,8 +18,9 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
-import type { ContentSelection, ScoredContent } from "./data-quality-agent";
-import type { NewsArticle, AlertEvent } from "@prisma/client";
+import type { ContentSelection } from "./data-quality-agent";
+import type { NewsArticle } from "@prisma/client";
+import { prisma } from "../db";
 import { fetchNYCWeatherForecast, type DayForecast } from "../weather";
 import {
   generateNanoAppSubject,
@@ -105,12 +106,12 @@ export async function generateSubjectLine(
   selection: ContentSelection,
   weather?: { temp: number; condition: string }
 ): Promise<string> {
-  const topNews = selection.news[0]?.item;
-  const activeAlerts = selection.alerts.filter(a => a.score.overall > 70);
+  const topNews = selection.news[0];
+  const activeAlerts = selection.alerts.filter(a => a.score > 70);
 
   // Build context for Claude
   const context = {
-    hasUrgentAlert: activeAlerts.some(a => a.score.dimensions.timeliness > 90),
+    hasUrgentAlert: activeAlerts.some(a => a.score > 90),
     topHeadline: topNews?.title || null,
     alertCount: activeAlerts.length,
     weather: weather ? `${weather.temp}°F, ${weather.condition}` : null,
@@ -176,23 +177,22 @@ Why should this NYC resident care about this story? Be specific about impact on 
  * Generate a brief, useful summary of transit alerts.
  */
 export async function generateCommuteSummary(
-  alerts: ScoredContent<AlertEvent>[]
+  alerts: Array<{ id: string; title: string; score: number }>
 ): Promise<string> {
   if (alerts.length === 0) {
     return "All subway lines running normal service.";
   }
 
   const alertData = alerts.map(a => ({
-    title: a.item.title,
-    lines: (a.item.metadata as Record<string, unknown>)?.affectedLines || [],
-    severity: a.score.dimensions.timeliness > 80 ? "active" : "scheduled",
+    title: a.title,
+    severity: a.score > 80 ? "active" : "scheduled",
   }));
 
   try {
     const response = await anthropic.messages.create({
       model: "claude-3-5-haiku-latest",
       max_tokens: 150,
-      system: "Summarize MTA alerts for commuters. Be direct and actionable. Mention specific lines affected. Two sentences max.",
+      system: "Summarize MTA alerts for commuters. Be direct and actionable. Mention specific lines affected if mentioned in alerts. Two sentences max.",
       messages: [{
         role: "user",
         content: `Alerts: ${JSON.stringify(alertData)}
@@ -273,22 +273,30 @@ export async function generateDigestContent(
     // Fallback to basic subject if no weather
     subject = await generateSubjectLine(selection);
     preheader = selection.news[0]
-      ? `Top story: ${selection.news[0].item.title.slice(0, 60)}...`
+      ? `Top story: ${selection.news[0].title.slice(0, 60)}...`
       : "Your daily NYC briefing";
   }
 
   // Generate commute summary
   const commuteSummary = await generateCommuteSummary(selection.alerts);
 
-  // Generate news items with "why care" explanations
+  // Fetch full news articles from database
   const maxNews = config.maxNewsItems || 5;
+  const newsIds = selection.news.slice(0, maxNews).map(n => n.id);
+  const fullNewsArticles = await prisma.newsArticle.findMany({
+    where: { id: { in: newsIds } },
+  });
+
+  // Build lookup map for ordering
+  const newsMap = new Map(fullNewsArticles.map(a => [a.id, a]));
   const newsItems: NewsDigestItem[] = [];
 
-  for (const scoredNews of selection.news.slice(0, maxNews)) {
-    const article = scoredNews.item;
+  for (let i = 0; i < newsIds.length; i++) {
+    const article = newsMap.get(newsIds[i]);
+    if (!article) continue;
 
-    // Only generate why-care for top stories (expensive LLM calls)
-    const whyCare = config.includeWhyCare !== false && scoredNews.rank <= 3
+    // Only generate why-care for top 3 stories (expensive LLM calls)
+    const whyCare = config.includeWhyCare !== false && i < 3
       ? await generateWhyCare(article, config.userPreferences)
       : "";
 
@@ -298,7 +306,7 @@ export async function generateDigestContent(
       whyCare,
       source: article.source,
       url: article.url,
-      score: scoredNews.score.overall,
+      score: selection.news[i].score,
     });
   }
 

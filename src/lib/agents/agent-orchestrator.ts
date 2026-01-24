@@ -342,7 +342,7 @@ export async function getFullQualityReport(): Promise<{
   const quality = await getDataQualityReport();
 
   // Ready if health > 30% and we have news content
-  const readyForDigest = health.overall >= 30 && quality.sources[0].itemCount > 0;
+  const readyForDigest = health.overall >= 30 && (quality.sources[0]?.itemCount24h ?? 0) > 0;
 
   return {
     timestamp: DateTime.now().toISO()!,

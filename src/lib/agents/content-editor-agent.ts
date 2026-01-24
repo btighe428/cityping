@@ -407,14 +407,14 @@ export async function editDigestContent(
   // ----- COMMUTE -----
   const commuteAlerts: EditedDigestContent["commute"]["alerts"] = [];
   for (const alert of selection.alerts.slice(0, 3)) {
-    const metadata = alert.item.metadata as Record<string, unknown> | null;
-    const lines = (metadata?.affectedLines as string[]) || [];
-    const line = lines[0] || "Service";
-    const alternative = await generateCommuteAlternative(line, alert.item.title || "");
+    // Extract line from title if it starts with a letter/number (e.g., "A train delays")
+    const lineMatch = alert.title.match(/^([A-Z0-9]+)\s/i);
+    const line = lineMatch ? lineMatch[1] : "Service";
+    const alternative = await generateCommuteAlternative(line, alert.title || "");
 
     commuteAlerts.push({
       line,
-      message: alert.item.title || "Service disruption",
+      message: alert.title || "Service disruption",
       alternative: alternative || undefined,
     });
   }
@@ -519,25 +519,31 @@ export async function editDigestContent(
   }
 
   // ----- NEWS -----
+  // Fetch full news articles from database using selection IDs
+  const newsIds = selection.news.slice(0, 5).map(n => n.id);
+  const fullNewsArticles = await prisma.newsArticle.findMany({
+    where: { id: { in: newsIds } },
+  });
+
   const news: EditedNewsStory[] = [];
-  for (const article of selection.news.slice(0, 5)) {
+  for (const article of fullNewsArticles) {
     // Clean the summary - strip HTML and truncate
-    const rawSummary = article.item.snippet || article.item.summary || "";
+    const rawSummary = article.snippet || article.summary || "";
     const cleanSummary = truncate(stripHtml(rawSummary), 200);
 
     const whyCare = await generateWhyCareBox(
-      article.item.title,
+      article.title,
       cleanSummary,
-      article.item.source
+      article.source
     );
 
     news.push({
-      id: article.item.id,
-      headline: article.item.title,
-      source: article.item.source.toUpperCase(),
+      id: article.id,
+      headline: article.title,
+      source: article.source.toUpperCase(),
       summary: cleanSummary,
       whyCare,
-      url: article.item.url,
+      url: article.url,
     });
   }
 

@@ -9,6 +9,10 @@
       "schedule": "0 */2 * * *"
     },
     {
+      "path": "/api/agents/data-quality",
+      "schedule": "0,30 * * * *"
+    },
+    {
       "path": "/api/agents/orchestrate-digest?status=true",
       "schedule": "*/15 * * * *"
     },
@@ -79,6 +83,18 @@
     {
       "path": "/api/jobs/scrape-parks",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/jobs/scrape-emergency",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/jobs/scrape-events",
+      "schedule": "0 6,12,18 * * *"
+    },
+    {
+      "path": "/api/jobs/scrape-streets",
+      "schedule": "0 */4 * * *"
     }
   ]
 }
