@@ -2,12 +2,16 @@
 /**
  * ROBUSTNESS AGENT
  *
+ * Stage 1 of the CityPing multi-agent pipeline.
+ *
  * Ensures data pipelines are bulletproof through:
  * - Automatic retry with exponential backoff
  * - Circuit breaker pattern for failing sources
  * - Data validation at every stage
  * - ACTUAL self-healing (not just logging)
  * - Proactive stale data refresh
+ *
+ * Output: HealthReport with readyForNextStage flag
  *
  * Philosophy: "Data should never be stale, invalid, or missing.
  * When problems occur, FIX THEM AUTOMATICALLY - don't just report them."
@@ -16,15 +20,26 @@
 import { prisma } from "../db";
 import { DateTime } from "luxon";
 
-// Import scrapers directly for self-healing
-import { ingestAllNewsArticles } from "../scrapers/news";
-import { ingestMtaAlerts } from "../scrapers/mta";
-import { ingestSampleSales } from "../scrapers/sample-sales";
-import { ingestHousingLotteries } from "../scrapers/housing-connect";
-import { sync311Alerts } from "../scrapers/nyc-311";
-import { syncAirQuality } from "../scrapers/air-quality";
-import { syncDiningDeals } from "../scrapers/dining-deals";
-import { syncParksEvents } from "../scrapers/parks-events";
+// Import unified data sources and types
+import {
+  DATA_SOURCES,
+  getDataSource,
+  getSourcesByPriority,
+  getCriticalSources,
+  checkAllSourcesFreshness,
+  checkSourceFreshness,
+  refreshSource,
+  calculateOverallHealth,
+  getRefreshFunction,
+} from "./data-sources";
+
+import type {
+  HealthReport,
+  HealingActionV2,
+  OrchestrationError,
+  SourceFreshness,
+  ErrorSeverity,
+} from "./types";
 
 // =============================================================================
 // TYPES
@@ -78,90 +93,11 @@ export interface HealingAction {
 }
 
 // =============================================================================
-// DATA SOURCE CONFIGURATION - Maps sources to their refresh functions
+// DATA SOURCE CONFIGURATION
 // =============================================================================
-
-type RefreshFunction = () => Promise<{ created: number; skipped?: number; errors?: string[] }>;
-
-const DATA_SOURCE_CONFIG: Record<string, {
-  name: string;
-  refreshFn: RefreshFunction;
-  freshnessThresholdHours: number;
-  priority: number; // 1 = highest
-}> = {
-  "news": {
-    name: "NYC News",
-    refreshFn: async () => {
-      const result = await ingestAllNewsArticles();
-      return { created: result.total.created, skipped: result.total.skipped };
-    },
-    freshnessThresholdHours: 12,
-    priority: 1,
-  },
-  "mta": {
-    name: "MTA Alerts",
-    refreshFn: async () => {
-      const result = await ingestMtaAlerts();
-      return { created: result.created, skipped: result.skipped };
-    },
-    freshnessThresholdHours: 1,
-    priority: 1,
-  },
-  "sample-sales": {
-    name: "Sample Sales",
-    refreshFn: async () => {
-      const result = await ingestSampleSales();
-      return { created: result.created, skipped: result.skipped };
-    },
-    freshnessThresholdHours: 24,
-    priority: 2,
-  },
-  "housing": {
-    name: "Housing Lotteries",
-    refreshFn: async () => {
-      const result = await ingestHousingLotteries();
-      return { created: result.created, skipped: result.skipped };
-    },
-    freshnessThresholdHours: 48,
-    priority: 3,
-  },
-  "311": {
-    name: "311 Service Alerts",
-    refreshFn: async () => {
-      const result = await sync311Alerts();
-      return { created: result.created, skipped: result.total - result.created };
-    },
-    freshnessThresholdHours: 4,
-    priority: 2,
-  },
-  "air-quality": {
-    name: "Air Quality",
-    refreshFn: async () => {
-      const result = await syncAirQuality();
-      return { created: result.readings, skipped: 0 };
-    },
-    freshnessThresholdHours: 6,
-    priority: 3,
-  },
-  "dining": {
-    name: "Dining Deals",
-    refreshFn: async () => {
-      const result = await syncDiningDeals();
-      return { created: result.created, skipped: result.total - result.created };
-    },
-    freshnessThresholdHours: 24,
-    priority: 3,
-  },
-  "parks": {
-    name: "Parks Events",
-    refreshFn: async () => {
-      const result = await syncParksEvents();
-      return { created: result.created, skipped: result.total - result.created };
-    },
-    freshnessThresholdHours: 24,
-    priority: 3,
-  },
-};
+// NOTE: Data source configuration has been moved to ./data-sources.ts
+// Import DATA_SOURCES, getDataSource, refreshSource from there.
+// This keeps a single source of truth for all agent configurations.
 
 // =============================================================================
 // CIRCUIT BREAKER
@@ -421,131 +357,19 @@ export interface DataFreshnessStatus {
 }
 
 export async function checkDataFreshness(): Promise<DataFreshnessStatus[]> {
-  const now = DateTime.now();
-  const results: DataFreshnessStatus[] = [];
+  // Delegate to unified data-sources module
+  const freshness = await checkAllSourcesFreshness();
 
-  // Check NewsArticle freshness
-  const latestNews = await prisma.newsArticle.findFirst({
-    orderBy: { publishedAt: "desc" },
-  });
-  const newsCount = await prisma.newsArticle.count({
-    where: { publishedAt: { gte: now.minus({ hours: 48 }).toJSDate() } },
-  });
-  const newsConfig = DATA_SOURCE_CONFIG["news"];
-  const newsHoursOld = latestNews ? now.diff(DateTime.fromJSDate(latestNews.publishedAt), "hours").hours : null;
-  results.push({
-    sourceId: "news",
-    name: newsConfig.name,
-    isStale: newsHoursOld === null || newsHoursOld > newsConfig.freshnessThresholdHours,
-    lastDataAt: latestNews?.publishedAt || null,
-    thresholdHours: newsConfig.freshnessThresholdHours,
-    hoursOld: newsHoursOld ? Math.round(newsHoursOld) : null,
-    itemCount: newsCount,
-  });
-
-  // Check each AlertEvent module - map config sourceId to actual Prisma moduleId
-  const ALERT_MODULE_MAP: Record<string, string> = {
-    "mta": "transit",          // MTA uses moduleId "transit"
-    "sample-sales": "food",    // Sample sales uses moduleId "food"
-    "housing": "housing",      // Housing uses moduleId "housing"
-  };
-
-  for (const [configId, moduleId] of Object.entries(ALERT_MODULE_MAP)) {
-    const config = DATA_SOURCE_CONFIG[configId];
-    if (!config) continue;
-
-    const latest = await prisma.alertEvent.findFirst({
-      where: { source: { moduleId } },
-      orderBy: { createdAt: "desc" },
-    });
-    const count = await prisma.alertEvent.count({
-      where: {
-        source: { moduleId },
-        createdAt: { gte: now.minus({ hours: 48 }).toJSDate() },
-      },
-    });
-    const hoursOld = latest ? now.diff(DateTime.fromJSDate(latest.createdAt), "hours").hours : null;
-
-    results.push({
-      sourceId: configId,
-      name: config.name,
-      isStale: hoursOld === null || hoursOld > config.freshnessThresholdHours,
-      lastDataAt: latest?.createdAt || null,
-      thresholdHours: config.freshnessThresholdHours,
-      hoursOld: hoursOld ? Math.round(hoursOld) : null,
-      itemCount: count,
-    });
-  }
-
-  // Check ServiceAlert (311)
-  const latest311 = await prisma.serviceAlert.findFirst({
-    orderBy: { fetchedAt: "desc" },
-  });
-  const count311 = await prisma.serviceAlert.count();
-  const config311 = DATA_SOURCE_CONFIG["311"];
-  const hours311 = latest311 ? now.diff(DateTime.fromJSDate(latest311.fetchedAt), "hours").hours : null;
-  results.push({
-    sourceId: "311",
-    name: config311.name,
-    isStale: hours311 === null || hours311 > config311.freshnessThresholdHours,
-    lastDataAt: latest311?.fetchedAt || null,
-    thresholdHours: config311.freshnessThresholdHours,
-    hoursOld: hours311 ? Math.round(hours311) : null,
-    itemCount: count311,
-  });
-
-  // Check AirQualityReading
-  const latestAQ = await prisma.airQualityReading.findFirst({
-    orderBy: { fetchedAt: "desc" },
-  });
-  const countAQ = await prisma.airQualityReading.count();
-  const configAQ = DATA_SOURCE_CONFIG["air-quality"];
-  const hoursAQ = latestAQ ? now.diff(DateTime.fromJSDate(latestAQ.fetchedAt), "hours").hours : null;
-  results.push({
-    sourceId: "air-quality",
-    name: configAQ.name,
-    isStale: hoursAQ === null || hoursAQ > configAQ.freshnessThresholdHours,
-    lastDataAt: latestAQ?.fetchedAt || null,
-    thresholdHours: configAQ.freshnessThresholdHours,
-    hoursOld: hoursAQ ? Math.round(hoursAQ) : null,
-    itemCount: countAQ,
-  });
-
-  // Check DiningDeal
-  const latestDining = await prisma.diningDeal.findFirst({
-    orderBy: { fetchedAt: "desc" },
-  });
-  const countDining = await prisma.diningDeal.count();
-  const configDining = DATA_SOURCE_CONFIG["dining"];
-  const hoursDining = latestDining ? now.diff(DateTime.fromJSDate(latestDining.fetchedAt), "hours").hours : null;
-  results.push({
-    sourceId: "dining",
-    name: configDining.name,
-    isStale: hoursDining === null || hoursDining > configDining.freshnessThresholdHours,
-    lastDataAt: latestDining?.fetchedAt || null,
-    thresholdHours: configDining.freshnessThresholdHours,
-    hoursOld: hoursDining ? Math.round(hoursDining) : null,
-    itemCount: countDining,
-  });
-
-  // Check ParkEvent
-  const latestPark = await prisma.parkEvent.findFirst({
-    orderBy: { fetchedAt: "desc" },
-  });
-  const countPark = await prisma.parkEvent.count();
-  const configPark = DATA_SOURCE_CONFIG["parks"];
-  const hoursPark = latestPark ? now.diff(DateTime.fromJSDate(latestPark.fetchedAt), "hours").hours : null;
-  results.push({
-    sourceId: "parks",
-    name: configPark.name,
-    isStale: hoursPark === null || hoursPark > configPark.freshnessThresholdHours,
-    lastDataAt: latestPark?.fetchedAt || null,
-    thresholdHours: configPark.freshnessThresholdHours,
-    hoursOld: hoursPark ? Math.round(hoursPark) : null,
-    itemCount: countPark,
-  });
-
-  return results;
+  // Convert SourceFreshness to legacy DataFreshnessStatus format
+  return freshness.map((f) => ({
+    sourceId: f.sourceId,
+    name: f.name,
+    isStale: f.isStale,
+    lastDataAt: f.lastDataAt,
+    thresholdHours: f.thresholdHours,
+    hoursOld: f.hoursOld,
+    itemCount: f.itemCount,
+  }));
 }
 
 // =============================================================================
@@ -554,18 +378,18 @@ export async function checkDataFreshness(): Promise<DataFreshnessStatus[]> {
 
 export async function healStaleData(): Promise<HealingAction[]> {
   const actions: HealingAction[] = [];
-  const freshness = await checkDataFreshness();
+  const freshness = await checkAllSourcesFreshness();
 
   console.log("═══════════════════════════════════════════════════════════════");
   console.log("[Robustness] SELF-HEALING: Checking data freshness...");
   console.log("═══════════════════════════════════════════════════════════════");
 
-  // Sort by priority (lower = more important)
+  // Sort by priority (lower = more important) using unified data sources
   const staleSourcesSorted = freshness
     .filter(f => f.isStale)
     .sort((a, b) => {
-      const configA = DATA_SOURCE_CONFIG[a.sourceId];
-      const configB = DATA_SOURCE_CONFIG[b.sourceId];
+      const configA = getDataSource(a.sourceId);
+      const configB = getDataSource(b.sourceId);
       return (configA?.priority || 99) - (configB?.priority || 99);
     });
 
@@ -577,7 +401,7 @@ export async function healStaleData(): Promise<HealingAction[]> {
   console.log(`[Robustness] Found ${staleSourcesSorted.length} stale sources. HEALING NOW...`);
 
   for (const source of staleSourcesSorted) {
-    const config = DATA_SOURCE_CONFIG[source.sourceId];
+    const config = getDataSource(source.sourceId);
     if (!config) {
       console.warn(`[Robustness] No config for source ${source.sourceId}, skipping`);
       continue;
@@ -596,13 +420,18 @@ export async function healStaleData(): Promise<HealingAction[]> {
     const start = Date.now();
     console.log(`[Robustness] HEALING ${config.name}: ${action.reason}`);
 
-    // Call the refresh function directly
+    // Call the refresh function from unified data sources
     try {
-      const result = await config.refreshFn();
+      const result = await refreshSource(source.sourceId);
       action.duration = Date.now() - start;
-      action.success = true;
-      action.result = `Created ${result.created} items${result.skipped ? `, skipped ${result.skipped}` : ""}`;
-      console.log(`[Robustness] ✅ ${config.name} refresh completed: ${action.result} in ${action.duration}ms`);
+      if (result) {
+        action.success = true;
+        action.result = `Created ${result.created} items${result.skipped ? `, skipped ${result.skipped}` : ""}`;
+        console.log(`[Robustness] ✅ ${config.name} refresh completed: ${action.result} in ${action.duration}ms`);
+      } else {
+        action.success = false;
+        action.result = "No refresh function available";
+      }
     } catch (error) {
       action.duration = Date.now() - start;
       action.success = false;
@@ -804,6 +633,160 @@ export async function getSystemHealth(): Promise<{
   return { overall, status, sources, recommendations };
 }
 
+// =============================================================================
+// PRODUCE HEALTH REPORT - Main Stage 1 Output
+// =============================================================================
+
+/**
+ * Create a structured OrchestrationError from an error message.
+ */
+function createError(
+  message: string,
+  severity: ErrorSeverity,
+  sourceId?: string,
+  recoverable: boolean = true
+): OrchestrationError {
+  return {
+    stage: "robustness",
+    severity,
+    message,
+    sourceId,
+    timestamp: new Date(),
+    recoverable,
+  };
+}
+
+/**
+ * Produce comprehensive health report for Stage 1 of the pipeline.
+ *
+ * This is the main entry point for the robustness agent in the V2 pipeline.
+ * It returns a structured HealthReport that indicates whether the pipeline
+ * should proceed to Stage 2 (Data Quality).
+ *
+ * @param autoHeal - If true, attempt to heal stale sources before reporting
+ * @param healingThreshold - Health percentage below which healing is triggered (default: 50)
+ * @returns HealthReport with readyForNextStage flag
+ */
+export async function produceHealthReport(
+  autoHeal: boolean = true,
+  healingThreshold: number = 50
+): Promise<HealthReport> {
+  const startTime = Date.now();
+  const errors: OrchestrationError[] = [];
+  const recommendations: string[] = [];
+
+  console.log("┌──────────────────────────────────────────────────────────────┐");
+  console.log("│  STAGE 1: ROBUSTNESS AGENT - Producing Health Report        │");
+  console.log("└──────────────────────────────────────────────────────────────┘");
+
+  // Step 1: Check all source freshness
+  let sources = await checkAllSourcesFreshness();
+  let overallHealth = calculateOverallHealth(sources);
+
+  console.log(`[Robustness] Initial health: ${overallHealth}%`);
+  console.log(`[Robustness] Sources checked: ${sources.length}`);
+  console.log(`[Robustness] Stale sources: ${sources.filter(s => s.isStale).length}`);
+
+  // Step 2: Auto-heal if enabled and health is below threshold
+  let healingActions: HealingActionV2[] = [];
+
+  if (autoHeal && overallHealth < healingThreshold) {
+    console.log(`[Robustness] Health ${overallHealth}% < ${healingThreshold}% threshold, initiating healing...`);
+
+    const legacyActions = await healStaleData();
+
+    // Convert legacy HealingAction to HealingActionV2
+    healingActions = legacyActions.map((action) => ({
+      type: action.type,
+      sourceId: action.sourceId,
+      reason: action.reason,
+      executed: action.executed,
+      success: action.success,
+      result: action.result,
+      duration: action.duration,
+      error: action.success ? undefined : createError(
+        action.result || "Healing failed",
+        "warning",
+        action.sourceId,
+        true
+      ),
+    }));
+
+    // Re-check freshness after healing
+    await sleep(1000); // Brief wait for data to settle
+    sources = await checkAllSourcesFreshness();
+    overallHealth = calculateOverallHealth(sources);
+
+    console.log(`[Robustness] Health after healing: ${overallHealth}%`);
+  }
+
+  // Step 3: Determine overall status
+  let status: "healthy" | "degraded" | "critical" = "healthy";
+  const criticalSources = getCriticalSources();
+  const criticalStale = sources.filter(
+    (s) => s.isStale && criticalSources.some((c) => c.id === s.sourceId)
+  );
+
+  if (criticalStale.length > 0) {
+    status = "critical";
+    for (const source of criticalStale) {
+      errors.push(createError(
+        `Critical source "${source.name}" is stale (${source.hoursOld || "no data"}h old)`,
+        "critical",
+        source.sourceId,
+        false
+      ));
+      recommendations.push(`Investigate ${source.name} scraper - critical for digest`);
+    }
+  } else if (overallHealth < 50) {
+    status = "degraded";
+    errors.push(createError(
+      `Overall health ${overallHealth}% is below acceptable threshold`,
+      "error",
+      undefined,
+      true
+    ));
+    recommendations.push("Run manual healing or investigate failing scrapers");
+  } else if (overallHealth < 80) {
+    status = "degraded";
+  }
+
+  // Add recommendations for stale non-critical sources
+  const nonCriticalStale = sources.filter(
+    (s) => s.isStale && !criticalSources.some((c) => c.id === s.sourceId)
+  );
+  for (const source of nonCriticalStale) {
+    recommendations.push(`Refresh ${source.name} when possible (${source.hoursOld || "no data"}h old)`);
+  }
+
+  // Step 4: Determine if pipeline should proceed
+  // We can proceed if critical sources are fresh OR if we have at least some news
+  const newsSource = sources.find((s) => s.sourceId === "news");
+  const readyForNextStage: boolean =
+    criticalStale.length === 0 ||
+    (newsSource !== undefined && !newsSource.isStale && newsSource.itemCount > 0);
+
+  if (!readyForNextStage) {
+    console.log("[Robustness] ❌ NOT ready for next stage - critical sources missing");
+  } else {
+    console.log("[Robustness] ✅ Ready for Stage 2 (Data Quality)");
+  }
+
+  const duration = Date.now() - startTime;
+  console.log(`[Robustness] Health report generated in ${duration}ms`);
+
+  return {
+    timestamp: new Date(),
+    overallHealth,
+    status,
+    sources,
+    healingActions,
+    readyForNextStage,
+    errors,
+    recommendations,
+  };
+}
+
 export default {
   withRetry,
   validateAlertEvent,
@@ -814,4 +797,5 @@ export default {
   healStaleData,
   ensureDataReady,
   getCircuitState,
+  produceHealthReport,
 };

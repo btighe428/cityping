@@ -12,6 +12,10 @@
  * - Event curation with quality filtering (no random health outreach)
  * - Smart description truncation at word boundaries
  * - Module-based event prioritization
+ * - Optional orchestrator-enhanced mode with AI curation
+ *
+ * Query parameters:
+ * - useOrchestrator=true: Use multi-agent pipeline for content selection
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -22,6 +26,8 @@ import { fetchNYCWeatherForecast } from "@/lib/weather";
 import { JobMonitor } from "@/lib/job-monitor";
 import { getCuratedNewsForDate } from "@/lib/news-curation";
 import { DateTime } from "luxon";
+import { orchestrateDigestV2 } from "@/lib/agents/agent-orchestrator";
+import type { ContentSelectionV2 } from "@/lib/agents/types";
 
 // =============================================================================
 // CONFIGURATION
@@ -158,6 +164,97 @@ function scoreEvent(event: {
 }
 
 // =============================================================================
+// ORCHESTRATOR INTEGRATION
+// =============================================================================
+
+/**
+ * Build NYC Today news items from orchestrator selection.
+ * Maps the scored news articles to the email template format.
+ */
+function buildNewsFromOrchestrator(selection: ContentSelectionV2): NYCTodayNewsItem[] {
+  return selection.news.slice(0, 5).map((article) => ({
+    id: article.id,
+    title: article.title,
+    summary: article.summary ?? article.snippet?.slice(0, 200) ?? "",
+    source: article.source,
+    url: article.url,
+    nycAngle: article.nycAngle ?? undefined,
+  }));
+}
+
+/**
+ * Extract module ID from sourceId.
+ * AlertEvent.sourceId typically contains the module context.
+ */
+function getModuleFromSourceId(sourceId: string): string {
+  // Source IDs are typically in format like "transit-mta", "food-samplesales", etc.
+  const parts = sourceId.split("-");
+  return parts[0] || "general";
+}
+
+/**
+ * Build "What Matters Today" events from orchestrator selection.
+ * Uses scored alerts with category-based formatting.
+ */
+function buildWhatMattersFromOrchestrator(selection: ContentSelectionV2): NYCTodayEvent[] {
+  return selection.alerts.slice(0, 6).map((alert) => {
+    const moduleId = getModuleFromSourceId(alert.sourceId);
+
+    return {
+      id: alert.id,
+      title: alert.title ?? "Alert",
+      description: formatEventDescription(alert.body, 120),
+      category: moduleId,
+      isUrgent: alert.scores.impact >= 70 || ["transit", "weather"].includes(moduleId),
+      venue: (alert.metadata as Record<string, unknown>)?.venue as string | undefined,
+    };
+  });
+}
+
+/**
+ * Run the full orchestrator-enhanced pulse generation.
+ * Uses the multi-agent pipeline for content selection and curation.
+ */
+async function runOrchestratorEnhancedPulse(
+  nyNow: DateTime,
+  weatherForecast: Awaited<ReturnType<typeof fetchNYCWeatherForecast>>
+) {
+  console.log("[Daily Pulse] Using orchestrator-enhanced content selection");
+
+  const result = await orchestrateDigestV2({
+    autoHeal: true,
+    healingThreshold: 50,
+    selection: {
+      maxNews: 5,
+      maxAlerts: 6,
+      maxDeals: 3,
+      maxEvents: 4,
+      minQualityScore: 40,
+      lookbackHours: 24, // Only today's content
+    },
+    curation: {
+      enabled: true,
+      generateWhyCare: true,
+    },
+    skipSummarization: true, // We'll build our own email format
+  });
+
+  console.log(`[Daily Pulse] Orchestrator result: ${result.success ? "success" : "failed"}`);
+  console.log(`[Daily Pulse] Selected: ${result.selection.summary.totalSelected} items (quality: ${result.selection.summary.averageQuality.toFixed(1)})`);
+
+  if (result.errors.length > 0) {
+    console.warn(`[Daily Pulse] Orchestrator errors: ${result.errors.map(e => e.message).join("; ")}`);
+  }
+
+  return {
+    news: buildNewsFromOrchestrator(result.selection),
+    whatMattersToday: buildWhatMattersFromOrchestrator(result.selection),
+    metrics: result.metrics,
+    selection: result.selection,
+  };
+}
+
+// =============================================================================
 // CRON SECRET VERIFICATION
 // =============================================================================
 
@@ -181,6 +278,10 @@ export async function GET(request: NextRequest) {
   if (!verifyCronSecret(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Check for orchestrator mode
+  const { searchParams } = new URL(request.url);
+  const useOrchestrator = searchParams.get("useOrchestrator") === "true";
 
   // Start job monitoring
   const jobMonitor = await JobMonitor.start("send-daily-pulse");
@@ -241,17 +342,35 @@ export async function GET(request: NextRequest) {
     console.log(`[Daily Pulse] Curated news: ${curatedNews.length} stories`);
 
     // ==========================================================================
-    // FORMAT CURATED NEWS
+    // ORCHESTRATOR OR TRADITIONAL PATH
     // ==========================================================================
 
-    const newsItems: NYCTodayNewsItem[] = curatedNews.map((article) => ({
-      id: article.id,
-      title: article.title,
-      summary: article.summary,
-      nycAngle: article.nycAngle || undefined,
-      source: article.source,
-      url: article.url,
-    }));
+    let newsItems: NYCTodayNewsItem[];
+    let orchestratorMetrics: { totalDuration: number; avgQuality: number } | undefined;
+
+    if (useOrchestrator) {
+      // Use multi-agent pipeline for enhanced content selection
+      const orchestratorResult = await runOrchestratorEnhancedPulse(nyNow, weatherForecast);
+      newsItems = orchestratorResult.news;
+      orchestratorMetrics = {
+        totalDuration: orchestratorResult.metrics.totalDuration,
+        avgQuality: orchestratorResult.selection.summary.averageQuality,
+      };
+
+      // Note: We could also use orchestratorResult.whatMattersToday but
+      // the traditional path has more NYC-specific curation logic
+      console.log(`[Daily Pulse] Orchestrator enhanced: ${newsItems.length} news items`);
+    } else {
+      // Traditional path: Use AI-curated news from getCuratedNewsForDate
+      newsItems = curatedNews.map((article) => ({
+        id: article.id,
+        title: article.title,
+        summary: article.summary,
+        nycAngle: article.nycAngle || undefined,
+        source: article.source,
+        url: article.url,
+      }));
+    }
 
     // ==========================================================================
     // PROCESS WEATHER DATA
@@ -477,6 +596,8 @@ export async function GET(request: NextRequest) {
         cityEvents: cityEvents.length,
         curatedNews: curatedNews.length,
         weather: weather?.summary || null,
+        useOrchestrator,
+        orchestratorDuration: orchestratorMetrics?.totalDuration,
       },
     });
 
@@ -485,14 +606,15 @@ export async function GET(request: NextRequest) {
       users: users.length,
       sent,
       failed,
+      mode: useOrchestrator ? "orchestrator" : "traditional",
       events: {
         alertEventsTotal: alertEvents.length,
         alertEventsCurated: curatedAlertEvents.length,
         cityEvents: cityEvents.length,
       },
       news: {
-        count: curatedNews.length,
-        stories: curatedNews.map((n) => ({ title: n.title, source: n.source })),
+        count: newsItems.length,
+        stories: newsItems.map((n) => ({ title: n.title, source: n.source })),
       },
       weather: weather
         ? {
@@ -502,6 +624,12 @@ export async function GET(request: NextRequest) {
           }
         : null,
       lookAhead,
+      ...(orchestratorMetrics && {
+        orchestrator: {
+          totalDuration: `${(orchestratorMetrics.totalDuration / 1000).toFixed(2)}s`,
+          averageQuality: orchestratorMetrics.avgQuality.toFixed(1),
+        },
+      }),
     });
   } catch (error) {
     console.error("[Daily Pulse] Job failed:", error);

@@ -181,8 +181,13 @@ interface LLMResult {
   tokensUsed: number;
 }
 
+// LLM call timeout and retry configuration
+const LLM_TIMEOUT_MS = 30000; // 30 second timeout (clustering is more complex)
+const LLM_MAX_RETRIES = 2;
+
 /**
  * Call GPT-4o to cluster articles.
+ * Includes timeout and retry logic for production robustness.
  */
 async function clusterWithLLM(
   articles: ClusterableArticle[],
@@ -191,42 +196,73 @@ async function clusterWithLLM(
   const openai = getOpenAIClient();
   const prompt = buildClusteringPrompt(articles, targetClusters);
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
-    messages: [
-      {
-        role: "system",
-        content: `You are an expert NYC news editor. Your job is to identify thematic clusters among news articles and create compelling summaries that help readers understand what's happening in the city.
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= LLM_MAX_RETRIES; attempt++) {
+    try {
+      const response = await openai.chat.completions.create(
+        {
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: `You are an expert NYC news editor. Your job is to identify thematic clusters among news articles and create compelling summaries that help readers understand what's happening in the city.
 
 Output valid JSON only. No markdown code blocks, no explanation.`,
-      },
-      {
-        role: "user",
-        content: prompt,
-      },
-    ],
-    temperature: 0.3,
-    max_tokens: 2000,
-    response_format: { type: "json_object" },
-  });
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          temperature: 0.3,
+          max_tokens: 2000,
+          response_format: { type: "json_object" },
+        },
+        { timeout: LLM_TIMEOUT_MS }
+      );
 
-  const content = response.choices[0]?.message?.content || "{}";
+      const content = response.choices[0]?.message?.content || "{}";
 
-  let parsed: LLMClusterResponse;
-  try {
-    parsed = JSON.parse(content);
-    // Ensure clusters array exists
-    if (!parsed.clusters) {
-      parsed = { clusters: [] };
+      let parsed: LLMClusterResponse;
+      try {
+        parsed = JSON.parse(content);
+        // Ensure clusters array exists
+        if (!parsed.clusters) {
+          parsed = { clusters: [] };
+        }
+      } catch {
+        throw new Error("Failed to parse LLM response as JSON");
+      }
+
+      return {
+        response: parsed,
+        tokensUsed: response.usage?.total_tokens || 0,
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.warn(
+        `[ClusteringAgent] LLM attempt ${attempt}/${LLM_MAX_RETRIES} failed: ${lastError.message}`
+      );
+
+      // Don't retry on non-transient errors
+      if (
+        lastError.message.includes("API key") ||
+        lastError.message.includes("401") ||
+        lastError.message.includes("403") ||
+        lastError.message.includes("parse")
+      ) {
+        break;
+      }
+
+      // Wait before retry (exponential backoff)
+      if (attempt < LLM_MAX_RETRIES) {
+        await new Promise((r) => setTimeout(r, 1000 * attempt));
+      }
     }
-  } catch {
-    throw new Error("Failed to parse LLM response as JSON");
   }
 
-  return {
-    response: parsed,
-    tokensUsed: response.usage?.total_tokens || 0,
-  };
+  throw lastError || new Error("LLM clustering failed after retries");
 }
 
 /**

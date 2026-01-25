@@ -14,8 +14,48 @@ import { NextRequest, NextResponse } from "next/server";
 import { sendEmail } from "@/lib/resend";
 import { orchestrateDigest } from "@/lib/agents/agent-orchestrator";
 import { editDigestContent, validateContentQuality } from "@/lib/agents/content-editor-agent";
+import { type ContentSelection } from "@/lib/agents/data-quality-agent";
 import { fetchNYCWeatherForecast } from "@/lib/weather";
 import { DateTime } from "luxon";
+import type { ContentSelectionV2 } from "@/lib/agents/types";
+
+/**
+ * Convert ContentSelectionV2 to legacy ContentSelection format
+ * for compatibility with content-editor-agent.
+ */
+function adaptSelectionV2ToLegacy(selection: ContentSelectionV2): ContentSelection {
+  return {
+    news: selection.news.map(n => ({
+      id: n.id,
+      title: n.title,
+      score: n.scores.overall,
+    })),
+    alerts: selection.alerts.map(a => ({
+      id: a.id,
+      title: a.title ?? "",
+      score: a.scores.overall,
+    })),
+    events: selection.events.map(e => ({
+      id: e.id,
+      name: e.name, // ParkEvent uses 'name' not 'title'
+      score: e.scores.overall,
+    })),
+    dining: selection.dining.map(d => ({
+      id: d.id,
+      brand: d.restaurant, // DiningDeal uses 'restaurant' not 'brand'
+      score: d.scores.overall,
+    })),
+    summary: {
+      total: selection.summary.totalEvaluated,
+      selected: selection.summary.totalSelected,
+      totalSelected: selection.summary.totalSelected,
+      totalEvaluated: selection.summary.totalEvaluated,
+      averageQuality: selection.summary.averageQuality,
+      topSources: selection.summary.topSources,
+      categories: selection.summary.categoryBreakdown as Record<string, number>,
+    },
+  };
+}
 
 // Build full HTML email with edited content
 function buildEditedDigestHtml(content: Awaited<ReturnType<typeof editDigestContent>>, subject: string): string {
@@ -221,8 +261,9 @@ export async function GET(request: NextRequest) {
       precipChance: todayWeather.probabilityOfPrecipitation || 0,
     } : null;
 
-    // 3. Run Content Editor Agent
-    const editedContent = await editDigestContent(result.selection, weather);
+    // 3. Run Content Editor Agent (using adapter for V2 selection)
+    const legacySelection = adaptSelectionV2ToLegacy(result.selection);
+    const editedContent = await editDigestContent(legacySelection, weather);
 
     // 4. Validate quality
     const quality = validateContentQuality(editedContent);

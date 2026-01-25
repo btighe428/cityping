@@ -144,8 +144,13 @@ interface LLMResult {
   tokensUsed: number;
 }
 
+// LLM call timeout and retry configuration
+const LLM_TIMEOUT_MS = 15000; // 15 second timeout
+const LLM_MAX_RETRIES = 2;
+
 /**
  * Generate natural language messages using GPT-4o-mini.
+ * Includes timeout and retry logic for production robustness.
  */
 async function generateMessagesWithLLM(
   items: Array<{ event: KnownEvent; eventDate: DateTime; daysUntil: number }>,
@@ -154,12 +159,17 @@ async function generateMessagesWithLLM(
   const openai = getOpenAIClient();
   const prompt = buildPrompt(items, today);
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "system",
-        content: `You are a helpful NYC assistant writing brief, actionable alerts for a daily email digest.
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= LLM_MAX_RETRIES; attempt++) {
+    try {
+      const response = await openai.chat.completions.create(
+        {
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: `You are a helpful NYC assistant writing brief, actionable alerts for a daily email digest.
 
 Style guidelines:
 - Write in a friendly but concise style
@@ -168,23 +178,48 @@ Style guidelines:
 - Use the provided template as a starting point but make it sound natural
 - Include urgency cues for time-sensitive items ("Don't forget...", "Last day to...")
 - Be specific about dates and times when relevant`,
-      },
-      {
-        role: "user",
-        content: prompt,
-      },
-    ],
-    temperature: 0.7,
-    max_tokens: 500,
-  });
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          temperature: 0.7,
+          max_tokens: 500,
+        },
+        { timeout: LLM_TIMEOUT_MS }
+      );
 
-  const content = response.choices[0]?.message?.content || "";
-  const messages = parseResponse(content, items.length);
+      const content = response.choices[0]?.message?.content || "";
+      const messages = parseResponse(content, items.length);
 
-  return {
-    messages,
-    tokensUsed: response.usage?.total_tokens || 0,
-  };
+      return {
+        messages,
+        tokensUsed: response.usage?.total_tokens || 0,
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.warn(
+        `[HorizonAgent] LLM attempt ${attempt}/${LLM_MAX_RETRIES} failed: ${lastError.message}`
+      );
+
+      // Don't retry on non-transient errors
+      if (
+        lastError.message.includes("API key") ||
+        lastError.message.includes("401") ||
+        lastError.message.includes("403")
+      ) {
+        break;
+      }
+
+      // Wait before retry (exponential backoff)
+      if (attempt < LLM_MAX_RETRIES) {
+        await new Promise((r) => setTimeout(r, 1000 * attempt));
+      }
+    }
+  }
+
+  throw lastError || new Error("LLM generation failed after retries");
 }
 
 /**

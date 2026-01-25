@@ -105,7 +105,8 @@ export async function GET(request: NextRequest) {
           duration: `${(result.metrics.stages.robustness.duration / 1000).toFixed(2)}s`,
           healthBefore: result.metrics.stages.robustness.healthBefore,
           healthAfter: result.metrics.stages.robustness.healthAfter,
-          healingActions: result.metrics.stages.robustness.healingActions.length,
+          healingActionsExecuted: result.metrics.stages.robustness.healingActionsExecuted,
+          healingActionsSucceeded: result.metrics.stages.robustness.healingActionsSucceeded,
         },
         quality: {
           duration: `${(result.metrics.stages.quality.duration / 1000).toFixed(2)}s`,
@@ -140,8 +141,8 @@ export async function POST(request: NextRequest) {
     const config: OrchestrationConfig = {
       autoHeal: body.autoHeal ?? true,
       skipSummarization: body.skipSummarization ?? false,
-      selectionConfig: body.selectionConfig,
-      summarizationConfig: body.summarizationConfig,
+      selection: body.selection ?? body.selectionConfig, // Support both old and new names
+      summarization: body.summarization ?? body.summarizationConfig, // Support both old and new names
     };
 
     const result = await orchestrateDigest(config);

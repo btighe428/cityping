@@ -1,21 +1,20 @@
 // src/lib/agents/agent-orchestrator.ts
 /**
- * AGENT ORCHESTRATOR
+ * AGENT ORCHESTRATOR V2
  *
- * The master conductor that coordinates all three specialized agents:
+ * The master conductor that coordinates all specialized agents through
+ * a unified pipeline with explicit stage interfaces:
  *
- * 1. ROBUSTNESS AGENT → Ensures data freshness with self-healing
- * 2. DATA QUALITY AGENT → Filters, dedupes, and scores content
- * 3. LLM SUMMARIZER AGENT → Creates personalized, relevant summaries
+ * Stage 1: ROBUSTNESS → Stage 2: DATA QUALITY → [2.5 Curation] → [2.75 Personalization] → Stage 3: LLM SUMMARIZER
+ *      ↓                      ↓                     ↓                   ↓                       ↓
+ *  HealthReport         ContentSelectionV2    CurationResult   PersonalizationResult      DigestContentV2
  *
- * Pipeline Flow:
- * ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
- * │   ROBUSTNESS    │───▶│  DATA QUALITY   │───▶│ LLM SUMMARIZER  │
- * │  Heal + Verify  │    │ Filter + Score  │    │  Personalize    │
- * └─────────────────┘    └─────────────────┘    └─────────────────┘
- *         │                      │                      │
- *         ▼                      ▼                      ▼
- *   Fresh Data (healed)   Quality Content       Ready-to-Send Email
+ * Key improvements over V1:
+ * - All stages use unified types from types.ts
+ * - ContentSelectionV2 includes full Prisma records (not just IDs)
+ * - Extension stages (Curation, Personalization) properly integrated
+ * - OrchestrationError with severity levels for proper error handling
+ * - Accurate metrics tracking across all stages
  *
  * Philosophy: "Every email should feel like a trusted friend who knows
  * the city is giving you the inside scoop."
@@ -23,124 +22,130 @@
 
 import { DateTime } from "luxon";
 
-// Import agents
+// Import unified types
 import {
+  type OrchestrationConfigV2,
+  type OrchestrationResultV2,
+  type OrchestrationMetricsV2,
+  type OrchestrationError,
+  type HealthReport,
+  type ContentSelectionV2,
+  type CurationResult,
+  type PersonalizationResult,
+  type DigestContentV2,
+  DEFAULT_ORCHESTRATION_CONFIG,
+  DEFAULT_SELECTION_CONFIG,
+  DEFAULT_CURATION_CONFIG,
+  DEFAULT_PERSONALIZATION_CONFIG,
+  DEFAULT_SUMMARIZATION_CONFIG,
+} from "./types";
+
+// Import stage agents
+import {
+  produceHealthReport,
+  healStaleData,
   getSystemHealth,
   checkDataFreshness,
-  healStaleData,
   type SourceHealth,
-  type HealingAction,
   type DataFreshnessStatus,
 } from "./robustness-agent";
 
 import {
-  selectBestContent,
+  selectBestContentV2,
   getDataQualityReport,
-  type ContentSelection,
-  type QualityScore,
-  type SelectionConfig,
 } from "./data-quality-agent";
 
-import {
-  generateDigestContent,
-  generateSubjectLine,
-  type DigestContent,
-  type SummarizationConfig,
-} from "./llm-summarizer-agent";
+import { curateContentV2 } from "./content-curator-agent";
+
+import { personalizeContentV2 } from "./personalization-agent";
+
+import { generateDigestContentV2 } from "./llm-summarizer-agent";
 
 // =============================================================================
-// TYPES
+// LEGACY TYPE EXPORTS (for backwards compatibility)
 // =============================================================================
 
-export interface OrchestrationConfig {
-  /** Heal stale data before proceeding? */
-  autoHeal?: boolean;
-  /** Selection parameters for data quality agent */
-  selectionConfig?: SelectionConfig;
-  /** Summarization parameters for LLM agent */
-  summarizationConfig?: SummarizationConfig;
-  /** Skip LLM summarization (use raw data) */
-  skipSummarization?: boolean;
-}
+/** @deprecated Use OrchestrationConfigV2 from types.ts */
+export type OrchestrationConfig = OrchestrationConfigV2;
 
-export interface OrchestrationResult {
-  success: boolean;
-  digest?: DigestContent;
-  selection?: ContentSelection;
-  metrics: OrchestrationMetrics;
-  errors: string[];
-  warnings: string[];
-}
+/** @deprecated Use OrchestrationResultV2 from types.ts */
+export type OrchestrationResult = OrchestrationResultV2;
 
-export interface OrchestrationMetrics {
-  totalDuration: number;
-  stages: {
-    robustness: {
-      duration: number;
-      healthBefore: number;
-      healthAfter: number;
-      healingActions: HealingAction[];
-    };
-    quality: {
-      duration: number;
-      itemsEvaluated: number;
-      itemsSelected: number;
-      averageQuality: number;
-    };
-    summarization: {
-      duration: number;
-      llmCallCount: number;
-    };
-  };
-}
-
-// =============================================================================
-// DEFAULT CONFIG
-// =============================================================================
-
-const DEFAULT_CONFIG: OrchestrationConfig = {
-  autoHeal: true,
-  selectionConfig: {
-    maxNews: 5,
-    maxAlerts: 3,
-    maxDeals: 3,
-    maxEvents: 4,
-    minQualityScore: 40,
-    lookbackHours: 48,
-  },
-  summarizationConfig: {
-    tone: "casual",
-    maxNewsItems: 5,
-    includeWhyCare: true,
-  },
-  skipSummarization: false,
-};
+/** @deprecated Use OrchestrationMetricsV2 from types.ts */
+export type OrchestrationMetrics = OrchestrationMetricsV2;
 
 // =============================================================================
 // MAIN ORCHESTRATION FUNCTION
 // =============================================================================
 
 /**
- * Run the full 3-agent pipeline to generate a personalized email digest.
+ * Run the full multi-agent pipeline to generate a personalized email digest.
  *
- * This is the main entry point for digest generation:
- * 1. Robustness Agent ensures all data sources are fresh
- * 2. Data Quality Agent selects the best content
- * 3. LLM Summarizer Agent creates personalized content
+ * This is the main entry point for digest generation with V2 interfaces:
+ * 1. Robustness Agent ensures all data sources are fresh (with self-healing)
+ * 2. Data Quality Agent selects and scores the best content
+ * 3. Curation Agent (optional) deduplicates and adds "why you should care"
+ * 4. Personalization Agent (optional) boosts content based on user profile
+ * 5. LLM Summarizer Agent creates the final personalized digest
+ *
+ * @param config - Pipeline configuration with stage-specific settings
+ * @returns Full pipeline result with outputs from each stage
  */
-export async function orchestrateDigest(
-  config: OrchestrationConfig = {}
-): Promise<OrchestrationResult> {
-  const cfg = { ...DEFAULT_CONFIG, ...config };
+export async function orchestrateDigestV2(
+  config: OrchestrationConfigV2 = {}
+): Promise<OrchestrationResultV2> {
+  // Merge with defaults
+  const cfg: OrchestrationConfigV2 = {
+    autoHeal: config.autoHeal ?? DEFAULT_ORCHESTRATION_CONFIG.autoHeal,
+    healingThreshold: config.healingThreshold ?? DEFAULT_ORCHESTRATION_CONFIG.healingThreshold,
+    selection: { ...DEFAULT_SELECTION_CONFIG, ...config.selection },
+    curation: { ...DEFAULT_CURATION_CONFIG, ...config.curation },
+    personalization: { ...DEFAULT_PERSONALIZATION_CONFIG, ...config.personalization },
+    summarization: { ...DEFAULT_SUMMARIZATION_CONFIG, ...config.summarization },
+    skipSummarization: config.skipSummarization ?? DEFAULT_ORCHESTRATION_CONFIG.skipSummarization,
+    abortOnCritical: config.abortOnCritical ?? DEFAULT_ORCHESTRATION_CONFIG.abortOnCritical,
+  };
+
   const startTime = Date.now();
-  const errors: string[] = [];
+  const errors: OrchestrationError[] = [];
   const warnings: string[] = [];
 
   console.log("╔══════════════════════════════════════════════════════════════╗");
-  console.log("║           CityPing 3-Agent Digest Orchestration              ║");
+  console.log("║        CityPing Multi-Agent Digest Orchestration V2         ║");
   console.log("╠══════════════════════════════════════════════════════════════╣");
   console.log(`║  Time: ${DateTime.now().toFormat("yyyy-MM-dd HH:mm:ss ZZZZ").padEnd(48)}║`);
   console.log("╚══════════════════════════════════════════════════════════════╝");
+
+  // Initialize metrics tracking
+  const metrics: OrchestrationMetricsV2 = {
+    totalDuration: 0,
+    stages: {
+      robustness: {
+        duration: 0,
+        healthBefore: 0,
+        healthAfter: 0,
+        healingActionsExecuted: 0,
+        healingActionsSucceeded: 0,
+      },
+      quality: {
+        duration: 0,
+        itemsEvaluated: 0,
+        itemsSelected: 0,
+        averageQuality: 0,
+      },
+      summarization: {
+        duration: 0,
+        llmCallCount: 0,
+      },
+    },
+  };
+
+  // Stage outputs
+  let healthReport: HealthReport | undefined;
+  let selection: ContentSelectionV2 | undefined;
+  let curation: CurationResult | undefined;
+  let personalization: PersonalizationResult | undefined;
+  let digest: DigestContentV2 | undefined;
 
   // =========================================================================
   // STAGE 1: ROBUSTNESS - Ensure data is fresh
@@ -150,42 +155,56 @@ export async function orchestrateDigest(
   console.log("└──────────────────────────────────────────────────────────────┘");
 
   const robustnessStart = Date.now();
-  let healthBefore = 0;
-  let healthAfter = 0;
-  let healingActions: HealingAction[] = [];
 
   try {
-    // Check current health
-    const healthStatus = await getSystemHealth();
-    healthBefore = healthStatus.overall;
-    console.log(`[Orchestrator] Current system health: ${healthBefore}%`);
+    healthReport = await produceHealthReport(
+      cfg.autoHeal ?? true,
+      cfg.healingThreshold ?? 50
+    );
 
-    // Heal if needed and configured
-    if (cfg.autoHeal && healthBefore < 50) {
-      console.log("[Orchestrator] Health below 50%, initiating self-healing...");
-      healingActions = await healStaleData();
-      console.log(`[Orchestrator] Healing complete: ${healingActions.filter(a => a.success).length}/${healingActions.length} successful`);
+    metrics.stages.robustness.healthBefore = healthReport.overallHealth;
+    metrics.stages.robustness.healthAfter = healthReport.overallHealth;
+    metrics.stages.robustness.healingActionsExecuted = healthReport.healingActions.length;
+    metrics.stages.robustness.healingActionsSucceeded = healthReport.healingActions.filter(a => a.success).length;
 
-      // Re-check health
-      const healthAfterStatus = await getSystemHealth();
-      healthAfter = healthAfterStatus.overall;
-      console.log(`[Orchestrator] Health after healing: ${healthAfter}%`);
-    } else {
-      healthAfter = healthBefore;
-      console.log("[Orchestrator] Data sufficiently fresh, skipping heal");
+    console.log(`[Orchestrator] System health: ${healthReport.overallHealth}% (${healthReport.status})`);
+    console.log(`[Orchestrator] Healing actions: ${metrics.stages.robustness.healingActionsSucceeded}/${metrics.stages.robustness.healingActionsExecuted} succeeded`);
+    console.log(`[Orchestrator] Ready for next stage: ${healthReport.readyForNextStage}`);
+
+    // Collect any robustness errors
+    errors.push(...healthReport.errors);
+
+    // Add warnings from recommendations
+    warnings.push(...healthReport.recommendations);
+
+    // Check for critical errors
+    const criticalErrors = healthReport.errors.filter(e => e.severity === "critical");
+    if (criticalErrors.length > 0 && cfg.abortOnCritical) {
+      console.error("[Orchestrator] Critical errors in robustness stage, aborting pipeline");
+      return buildResult(false, healthReport, undefined, undefined, undefined, undefined, metrics, errors, warnings, cfg, startTime);
     }
 
-    // Warn if still unhealthy
-    if (healthAfter < 30) {
-      warnings.push(`Low data health: ${healthAfter}%. Digest may have limited content.`);
+    // Warn if not ready to proceed
+    if (!healthReport.readyForNextStage) {
+      warnings.push("Robustness check indicates data may not be ready - proceeding with caution");
     }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    errors.push(`Robustness stage failed: ${msg}`);
-    console.error("[Orchestrator] Robustness error:", msg);
+    const errorObj: OrchestrationError = {
+      stage: "robustness",
+      severity: "critical",
+      message: error instanceof Error ? error.message : String(error),
+      timestamp: new Date(),
+      recoverable: false,
+    };
+    errors.push(errorObj);
+    console.error("[Orchestrator] Robustness stage failed:", errorObj.message);
+
+    if (cfg.abortOnCritical) {
+      return buildResult(false, undefined, undefined, undefined, undefined, undefined, metrics, errors, warnings, cfg, startTime);
+    }
   }
 
-  const robustnessDuration = Date.now() - robustnessStart;
+  metrics.stages.robustness.duration = Date.now() - robustnessStart;
 
   // =========================================================================
   // STAGE 2: DATA QUALITY - Select best content
@@ -195,106 +214,301 @@ export async function orchestrateDigest(
   console.log("└──────────────────────────────────────────────────────────────┘");
 
   const qualityStart = Date.now();
-  let selection: ContentSelection | undefined;
-  let itemsEvaluated = 0;
-  let itemsSelected = 0;
-  let averageQuality = 0;
 
   try {
-    selection = await selectBestContent(cfg.selectionConfig);
-    itemsEvaluated = selection.summary.totalEvaluated;
-    itemsSelected = selection.summary.totalSelected;
-    averageQuality = selection.summary.averageQuality;
+    selection = await selectBestContentV2(cfg.selection);
 
-    console.log(`[Orchestrator] Evaluated ${itemsEvaluated} items, selected ${itemsSelected}`);
-    console.log(`[Orchestrator] Average quality score: ${averageQuality}`);
-    console.log(`[Orchestrator] Top sources: ${selection.summary.topSources.join(", ")}`);
+    metrics.stages.quality.itemsEvaluated = selection.summary.totalEvaluated;
+    metrics.stages.quality.itemsSelected = selection.summary.totalSelected;
+    metrics.stages.quality.averageQuality = selection.summary.averageQuality;
 
-    if (itemsSelected === 0) {
-      warnings.push("No content met quality threshold. Check data sources.");
+    console.log(`[Orchestrator] Evaluated ${selection.summary.totalEvaluated} items, selected ${selection.summary.totalSelected}`);
+    console.log(`[Orchestrator] Average quality score: ${selection.summary.averageQuality.toFixed(1)}`);
+    console.log(`[Orchestrator] Top sources: ${selection.summary.topSources.slice(0, 3).join(", ")}`);
+    console.log(`[Orchestrator] Category breakdown: ${JSON.stringify(selection.summary.categoryBreakdown)}`);
+
+    if (selection.summary.totalSelected === 0) {
+      warnings.push("No content met quality threshold. Check data sources and adjust minQualityScore if needed.");
     }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    errors.push(`Quality stage failed: ${msg}`);
-    console.error("[Orchestrator] Quality error:", msg);
+    const errorObj: OrchestrationError = {
+      stage: "quality",
+      severity: "critical",
+      message: error instanceof Error ? error.message : String(error),
+      timestamp: new Date(),
+      recoverable: false,
+    };
+    errors.push(errorObj);
+    console.error("[Orchestrator] Quality stage failed:", errorObj.message);
+
+    if (cfg.abortOnCritical) {
+      return buildResult(false, healthReport, undefined, undefined, undefined, undefined, metrics, errors, warnings, cfg, startTime);
+    }
   }
 
-  const qualityDuration = Date.now() - qualityStart;
+  metrics.stages.quality.duration = Date.now() - qualityStart;
+
+  // =========================================================================
+  // STAGE 2.5: CURATION (if enabled)
+  // =========================================================================
+  if (cfg.curation?.enabled && selection) {
+    console.log("\n┌──────────────────────────────────────────────────────────────┐");
+    console.log("│  STAGE 2.5: CURATION AGENT - Deduplicating & enriching      │");
+    console.log("└──────────────────────────────────────────────────────────────┘");
+
+    const curationStart = Date.now();
+
+    try {
+      curation = await curateContentV2(selection, cfg.curation);
+
+      metrics.stages.curation = {
+        duration: 0,
+        duplicatesRemoved: curation.stats.duplicatesRemoved,
+        itemsCurated: curation.stats.selected,
+      };
+
+      console.log(`[Orchestrator] Curated ${curation.stats.selected} items (${curation.stats.duplicatesRemoved} duplicates removed)`);
+      console.log(`[Orchestrator] Low quality filtered: ${curation.stats.lowQualityFiltered}`);
+      console.log(`[Orchestrator] Average relevance: ${curation.stats.avgRelevance.toFixed(1)}`);
+    } catch (error) {
+      const errorObj: OrchestrationError = {
+        stage: "curation",
+        severity: "error",
+        message: error instanceof Error ? error.message : String(error),
+        timestamp: new Date(),
+        recoverable: true,
+      };
+      errors.push(errorObj);
+      console.error("[Orchestrator] Curation stage failed:", errorObj.message);
+      // Continue without curation - it's optional
+    }
+
+    if (metrics.stages.curation) {
+      metrics.stages.curation.duration = Date.now() - curationStart;
+    }
+  }
+
+  // =========================================================================
+  // STAGE 2.75: PERSONALIZATION (if enabled and userId provided)
+  // =========================================================================
+  if (cfg.personalization?.enabled && cfg.personalization?.userId && selection) {
+    console.log("\n┌──────────────────────────────────────────────────────────────┐");
+    console.log("│  STAGE 2.75: PERSONALIZATION AGENT - Tailoring content      │");
+    console.log("└──────────────────────────────────────────────────────────────┘");
+
+    const personalizationStart = Date.now();
+
+    try {
+      personalization = await personalizeContentV2(
+        cfg.personalization.userId,
+        selection,
+        cfg.personalization
+      );
+
+      metrics.stages.personalization = {
+        duration: 0,
+        itemsBoosted: personalization.stats.boosted,
+        itemsFiltered: personalization.stats.filtered,
+      };
+
+      console.log(`[Orchestrator] Personalized for user: ${personalization.userId}`);
+      console.log(`[Orchestrator] Boosted: ${personalization.stats.boosted}, Filtered: ${personalization.stats.filtered}`);
+      console.log(`[Orchestrator] Average personal relevance: ${personalization.stats.avgPersonalRelevance.toFixed(1)}`);
+
+      if (personalization.optimalDeliveryTime) {
+        console.log(`[Orchestrator] Optimal delivery time: ${personalization.optimalDeliveryTime.time} (${personalization.optimalDeliveryTime.reason})`);
+      }
+    } catch (error) {
+      const errorObj: OrchestrationError = {
+        stage: "personalization",
+        severity: "error",
+        message: error instanceof Error ? error.message : String(error),
+        timestamp: new Date(),
+        recoverable: true,
+      };
+      errors.push(errorObj);
+      console.error("[Orchestrator] Personalization stage failed:", errorObj.message);
+      // Continue without personalization - it's optional
+    }
+
+    if (metrics.stages.personalization) {
+      metrics.stages.personalization.duration = Date.now() - personalizationStart;
+    }
+  }
 
   // =========================================================================
   // STAGE 3: LLM SUMMARIZATION - Generate personalized content
   // =========================================================================
   console.log("\n┌──────────────────────────────────────────────────────────────┐");
-  console.log("│  STAGE 3: LLM SUMMARIZER AGENT - Personalizing content      │");
+  console.log("│  STAGE 3: LLM SUMMARIZER AGENT - Generating digest          │");
   console.log("└──────────────────────────────────────────────────────────────┘");
 
   const summarizationStart = Date.now();
-  let digest: DigestContent | undefined;
-  let llmCallCount = 0;
 
   if (selection && !cfg.skipSummarization) {
     try {
-      digest = await generateDigestContent(selection, cfg.summarizationConfig);
-      // Estimate LLM calls: 1 subject + 1 commute + top 3 news why-care
-      llmCallCount = 2 + Math.min(3, selection.news.length);
+      digest = await generateDigestContentV2(selection, cfg.summarization);
+
+      metrics.stages.summarization.llmCallCount = digest.llmCallCount;
+
       console.log(`[Orchestrator] Generated digest with subject: "${digest.subject}"`);
+      console.log(`[Orchestrator] LLM calls made: ${digest.llmCallCount}`);
+      console.log(`[Orchestrator] News items in digest: ${digest.newsItems.length}`);
+
+      // Collect any summarization errors (non-fatal)
+      errors.push(...digest.errors);
+
+      if (digest.nanoApp) {
+        console.log(`[Orchestrator] NanoApp subject generated: ${digest.nanoApp.bites.length} bites`);
+      }
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      errors.push(`Summarization stage failed: ${msg}`);
-      console.error("[Orchestrator] Summarization error:", msg);
+      const errorObj: OrchestrationError = {
+        stage: "summarization",
+        severity: "critical",
+        message: error instanceof Error ? error.message : String(error),
+        timestamp: new Date(),
+        recoverable: false,
+      };
+      errors.push(errorObj);
+      console.error("[Orchestrator] Summarization stage failed:", errorObj.message);
     }
   } else if (cfg.skipSummarization) {
     console.log("[Orchestrator] Skipping LLM summarization as configured");
+  } else {
+    console.log("[Orchestrator] No content selection available for summarization");
   }
 
-  const summarizationDuration = Date.now() - summarizationStart;
-  const totalDuration = Date.now() - startTime;
+  metrics.stages.summarization.duration = Date.now() - summarizationStart;
 
   // =========================================================================
   // FINAL REPORT
   // =========================================================================
-  console.log("\n╔══════════════════════════════════════════════════════════════╗");
-  console.log("║                    ORCHESTRATION COMPLETE                    ║");
-  console.log("╠══════════════════════════════════════════════════════════════╣");
-  console.log(`║  Total Duration: ${(totalDuration / 1000).toFixed(2)}s`.padEnd(63) + "║");
-  console.log(`║  Robustness: ${(robustnessDuration / 1000).toFixed(2)}s (${healthBefore}% → ${healthAfter}%)`.padEnd(63) + "║");
-  console.log(`║  Quality: ${(qualityDuration / 1000).toFixed(2)}s (${itemsEvaluated} → ${itemsSelected} items)`.padEnd(63) + "║");
-  console.log(`║  Summarization: ${(summarizationDuration / 1000).toFixed(2)}s (${llmCallCount} LLM calls)`.padEnd(63) + "║");
-  console.log(`║  Errors: ${errors.length}, Warnings: ${warnings.length}`.padEnd(63) + "║");
-  console.log("╚══════════════════════════════════════════════════════════════╝");
-
-  return {
-    success: errors.length === 0 && (digest !== undefined || cfg.skipSummarization === true),
-    digest,
+  return buildResult(
+    errors.filter(e => e.severity === "critical").length === 0 && (digest !== undefined || cfg.skipSummarization === true),
+    healthReport,
     selection,
-    metrics: {
-      totalDuration,
-      stages: {
-        robustness: {
-          duration: robustnessDuration,
-          healthBefore,
-          healthAfter,
-          healingActions,
-        },
-        quality: {
-          duration: qualityDuration,
-          itemsEvaluated,
-          itemsSelected,
-          averageQuality,
-        },
-        summarization: {
-          duration: summarizationDuration,
-          llmCallCount,
-        },
-      },
-    },
+    curation,
+    personalization,
+    digest,
+    metrics,
     errors,
     warnings,
-  };
+    cfg,
+    startTime
+  );
 }
 
 /**
+ * Legacy orchestration function for backwards compatibility.
+ * @deprecated Use orchestrateDigestV2 for full pipeline control.
+ */
+export async function orchestrateDigest(
+  config: OrchestrationConfigV2 = {}
+): Promise<OrchestrationResultV2> {
+  return orchestrateDigestV2(config);
+}
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+function buildResult(
+  success: boolean,
+  healthReport: HealthReport | undefined,
+  selection: ContentSelectionV2 | undefined,
+  curation: CurationResult | undefined,
+  personalization: PersonalizationResult | undefined,
+  digest: DigestContentV2 | undefined,
+  metrics: OrchestrationMetricsV2,
+  errors: OrchestrationError[],
+  warnings: string[],
+  config: OrchestrationConfigV2,
+  startTime: number
+): OrchestrationResultV2 {
+  const totalDuration = Date.now() - startTime;
+  metrics.totalDuration = totalDuration;
+
+  // Print final report
+  console.log("\n╔══════════════════════════════════════════════════════════════╗");
+  console.log("║                    ORCHESTRATION COMPLETE                    ║");
+  console.log("╠══════════════════════════════════════════════════════════════╣");
+  console.log(`║  Success: ${success ? "✓" : "✗"}`.padEnd(63) + "║");
+  console.log(`║  Total Duration: ${(totalDuration / 1000).toFixed(2)}s`.padEnd(63) + "║");
+  console.log(`║  Robustness: ${(metrics.stages.robustness.duration / 1000).toFixed(2)}s (${metrics.stages.robustness.healthBefore}% → ${metrics.stages.robustness.healthAfter}%)`.padEnd(63) + "║");
+  console.log(`║  Quality: ${(metrics.stages.quality.duration / 1000).toFixed(2)}s (${metrics.stages.quality.itemsEvaluated} → ${metrics.stages.quality.itemsSelected} items)`.padEnd(63) + "║");
+  if (metrics.stages.curation) {
+    console.log(`║  Curation: ${(metrics.stages.curation.duration / 1000).toFixed(2)}s (${metrics.stages.curation.itemsCurated} curated, ${metrics.stages.curation.duplicatesRemoved} deduped)`.padEnd(63) + "║");
+  }
+  if (metrics.stages.personalization) {
+    console.log(`║  Personalization: ${(metrics.stages.personalization.duration / 1000).toFixed(2)}s (${metrics.stages.personalization.itemsBoosted} boosted, ${metrics.stages.personalization.itemsFiltered} filtered)`.padEnd(63) + "║");
+  }
+  console.log(`║  Summarization: ${(metrics.stages.summarization.duration / 1000).toFixed(2)}s (${metrics.stages.summarization.llmCallCount} LLM calls)`.padEnd(63) + "║");
+  console.log(`║  Errors: ${errors.filter(e => e.severity === "critical").length} critical, ${errors.filter(e => e.severity === "error").length} errors, ${errors.filter(e => e.severity === "warning").length} warnings`.padEnd(63) + "║");
+  console.log("╚══════════════════════════════════════════════════════════════╝");
+
+  // Build the result object
+  const result: OrchestrationResultV2 = {
+    success,
+    healthReport: healthReport ?? {
+      timestamp: new Date(),
+      overallHealth: 0,
+      status: "critical",
+      sources: [],
+      healingActions: [],
+      readyForNextStage: false,
+      errors: [],
+      recommendations: ["Health report unavailable"],
+    },
+    selection: selection ?? {
+      news: [],
+      alerts: [],
+      events: [],
+      dining: [],
+      byCategory: {
+        breaking: [],
+        essential: [],
+        money: [],
+        local: [],
+        civic: [],
+        culture: [],
+        lifestyle: [],
+      },
+      summary: {
+        totalEvaluated: 0,
+        totalSelected: 0,
+        averageQuality: 0,
+        topSources: [],
+        categoryBreakdown: {
+          breaking: 0,
+          essential: 0,
+          money: 0,
+          local: 0,
+          civic: 0,
+          culture: 0,
+          lifestyle: 0,
+        },
+      },
+      configApplied: config.selection ?? {},
+    },
+    curation,
+    personalization,
+    digest,
+    metrics,
+    errors,
+    warnings,
+    configApplied: config,
+  };
+
+  return result;
+}
+
+// =============================================================================
+// HEALTH CHECK FUNCTIONS
+// =============================================================================
+
+/**
  * Quick health check without running full pipeline.
+ * Useful for pre-flight checks before scheduling digest generation.
  */
 export async function checkOrchestrationHealth(): Promise<{
   ready: boolean;
@@ -331,6 +545,7 @@ export async function checkOrchestrationHealth(): Promise<{
 
 /**
  * Get detailed quality report across all data sources.
+ * Combines health metrics with quality assessment.
  */
 export async function getFullQualityReport(): Promise<{
   timestamp: string;
@@ -350,4 +565,40 @@ export async function getFullQualityReport(): Promise<{
     quality,
     readyForDigest,
   };
+}
+
+/**
+ * Run the pipeline with curation only (skip personalization and summarization).
+ * Useful for testing the content selection and curation stages.
+ */
+export async function orchestrateCurationOnly(
+  config: Partial<OrchestrationConfigV2> = {}
+): Promise<OrchestrationResultV2> {
+  return orchestrateDigestV2({
+    ...config,
+    curation: { enabled: true, ...config.curation },
+    personalization: { enabled: false },
+    skipSummarization: true,
+  });
+}
+
+/**
+ * Run the pipeline for a specific user with full personalization.
+ * Convenience wrapper that enables personalization with user ID.
+ */
+export async function orchestrateForUser(
+  userId: string,
+  config: Partial<OrchestrationConfigV2> = {}
+): Promise<OrchestrationResultV2> {
+  return orchestrateDigestV2({
+    ...config,
+    personalization: {
+      enabled: true,
+      userId,
+      locationBoosting: true,
+      commuteRelevance: true,
+      deliveryTimeOptimization: true,
+      ...config.personalization,
+    },
+  });
 }

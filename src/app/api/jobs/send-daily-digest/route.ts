@@ -1,36 +1,34 @@
 // src/app/api/jobs/send-daily-digest/route.ts
 /**
- * Daily Email Digest Job
+ * PRODUCTION DAILY DIGEST JOB
  *
- * This endpoint delivers consolidated email digests to free-tier users who
- * have opted into email notifications. Unlike premium users who receive
- * instant SMS alerts, free-tier users receive a daily digest summarizing
- * all their pending notifications from the previous 24 hours.
+ * Delivers the enhanced daily digest email to all opted-in users.
+ * Uses the multi-agent pipeline for AI-curated content:
+ *
+ * - THE HORIZON: Proactive alerts from NYC Knowledge Base
+ * - THE DEEP DIVE: LLM-clustered story analysis
+ * - THE BRIEFING: Quick-hit alerts and news
+ * - THE AGENDA: Upcoming events
  *
  * Architecture:
- * - Queries for free-tier users with emailOptInAt set
- * - Fetches pending email notifications grouped by module
- * - Creates feedback records with tokens for each event
- * - Builds and sends consolidated HTML digest via Resend
- * - Marks all included notifications as sent
+ * 1. Generate enhanced digest content (shared across all users)
+ * 2. For each user:
+ *    - Fetch pending email notifications
+ *    - Merge with enhanced digest content
+ *    - Build personalized HTML (premium vs free gating)
+ *    - Send via Resend
+ *    - Mark notifications as sent
  *
- * Timing Strategy:
- * Scheduled for 7am ET (12:00 UTC) to deliver morning updates when users
- * are planning their day. This creates urgency around the upgrade CTA by
- * showing alerts they "missed" compared to premium SMS users.
+ * Graceful Degradation:
+ * - If enhanced digest fails, falls back to standard notification-only digest
+ * - Individual section failures don't block the entire digest
+ * - Comprehensive error logging for debugging
  *
- * Feedback Loop Integration (Task 3.4):
- * Each digest email includes thumbs up/down feedback links for every event.
- * These links use secure tokens that:
- * - Are cryptographically random (256-bit entropy)
- * - Expire after 7 days
- * - Enable one-click feedback without login
- * Feedback data aggregates to improve relevance scoring by zip code.
+ * Timing: Scheduled for 7am ET (12:00 UTC) via Vercel cron
  *
  * Security:
  * - Requires x-cron-secret header (Vercel cron convention)
  * - Also accepts Authorization: Bearer token for backwards compatibility
- * - Scheduled via Vercel cron at 0 12 * * * (daily at 12:00 UTC)
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -45,11 +43,52 @@ import {
   getReferralCode,
 } from "@/lib/email-digest";
 import { createFeedbackRecord } from "@/lib/feedback";
+import {
+  generateDailyDigest,
+  summarizeDigest,
+  isDigestViable,
+  DailyDigestContent,
+} from "@/lib/agents/daily-digest-orchestrator";
+import {
+  buildEnhancedDigestHtml,
+  buildEnhancedDigestText,
+} from "@/lib/email-templates-enhanced";
+
+// Allow up to 120s for LLM calls (horizon + clustering)
+export const maxDuration = 120;
+
+// =============================================================================
+// TYPES
+// =============================================================================
+
+interface DigestJobResult {
+  success: boolean;
+  totalUsers: number;
+  digestsSent: number;
+  skipped: number;
+  failed: number;
+  mode: "enhanced" | "standard" | "fallback";
+  enhancedDigestStats?: {
+    horizonAlerts: number;
+    deepDiveClusters: number;
+    briefingItems: number;
+    agendaEvents: number;
+    tokensUsed: number;
+    estimatedCost: string;
+    processingTimeMs: number;
+    errors: string[];
+  };
+  errors: string[];
+}
+
+// =============================================================================
+// AUTHENTICATION
+// =============================================================================
 
 /**
  * Verify cron secret for authorization.
  *
- * Supports two authentication methods for flexibility:
+ * Supports two authentication methods:
  * 1. x-cron-secret header (Vercel cron convention, preferred)
  * 2. Authorization: Bearer token (backwards compatibility)
  *
@@ -59,17 +98,15 @@ function verifyCronSecret(request: NextRequest): boolean {
   const cronSecret = process.env.CRON_SECRET;
 
   if (!cronSecret) {
-    console.warn("CRON_SECRET not set - allowing request in development");
+    console.warn("[DailyDigest] CRON_SECRET not set - allowing in development");
     return process.env.NODE_ENV === "development";
   }
 
-  // Check x-cron-secret header (primary method per Vercel docs)
   const xCronSecret = request.headers.get("x-cron-secret");
   if (xCronSecret === cronSecret) {
     return true;
   }
 
-  // Check Authorization: Bearer token (backwards compatibility)
   const authHeader = request.headers.get("authorization");
   if (authHeader === `Bearer ${cronSecret}`) {
     return true;
@@ -78,167 +115,311 @@ function verifyCronSecret(request: NextRequest): boolean {
   return false;
 }
 
+// =============================================================================
+// ENHANCED DIGEST GENERATION
+// =============================================================================
+
 /**
- * GET handler for daily email digest job.
+ * Generate enhanced digest with graceful degradation.
  *
- * Using GET for consistency with existing jobs (send-reminders) and because
- * Vercel cron defaults to GET requests unless POST is explicitly specified.
- *
- * Flow:
- * 1. Query free-tier users with email opt-in
- * 2. For each user, fetch pending email notifications
- * 3. Group notifications by module
- * 4. Build and send consolidated digest
- * 5. Mark notifications as sent
- * 6. Return statistics
- *
- * @param request - Next.js request object (used for auth headers)
- * @returns JSON response with processing statistics
+ * If the full enhanced pipeline fails, returns null and the job
+ * falls back to standard notification-only digest.
  */
-export async function GET(request: NextRequest) {
-  // Verify cron secret
+async function generateEnhancedDigestSafe(): Promise<{
+  digest: DailyDigestContent | null;
+  errors: string[];
+}> {
+  const errors: string[] = [];
+
+  try {
+    console.log("[DailyDigest] Generating enhanced digest...");
+    const startTime = Date.now();
+
+    const digest = await generateDailyDigest({
+      userId: "daily-job",
+      isPremium: true, // Generate full content, gate per-user later
+    });
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[DailyDigest] Enhanced digest generated in ${elapsed}ms`);
+    console.log(summarizeDigest(digest));
+
+    // Collect any errors from the pipeline
+    if (digest.meta.errors.length > 0) {
+      errors.push(...digest.meta.errors);
+    }
+
+    return { digest, errors };
+  } catch (error) {
+    const errorMsg = `Enhanced digest generation failed: ${
+      error instanceof Error ? error.message : "Unknown error"
+    }`;
+    console.error(`[DailyDigest] ${errorMsg}`, error);
+    errors.push(errorMsg);
+    return { digest: null, errors };
+  }
+}
+
+// =============================================================================
+// NOTIFICATION PROCESSING
+// =============================================================================
+
+/**
+ * Process pending notifications for a user.
+ * Returns grouped events and feedback tokens.
+ */
+async function processPendingNotifications(
+  userId: string,
+  now: Date
+): Promise<{
+  pendingNotifications: Array<{
+    id: string;
+    event: EventWithModule;
+  }>;
+  groupedEvents: GroupedEvents;
+  feedbackTokens: FeedbackTokenMap;
+}> {
+  // Get pending email notifications
+  const pendingNotifications = await prisma.notificationOutbox.findMany({
+    where: {
+      userId,
+      channel: "email",
+      status: "pending",
+      scheduledFor: { lte: now },
+    },
+    include: {
+      event: {
+        include: {
+          source: {
+            include: { module: true },
+          },
+        },
+      },
+    },
+  });
+
+  // Group events by module
+  const groupedEvents: GroupedEvents = {};
+  for (const notification of pendingNotifications) {
+    const moduleId = notification.event.source.moduleId;
+    if (!groupedEvents[moduleId]) {
+      groupedEvents[moduleId] = [];
+    }
+    groupedEvents[moduleId].push(notification.event as EventWithModule);
+  }
+
+  // Create feedback tokens for each event
+  const feedbackTokens: FeedbackTokenMap = {};
+  for (const notification of pendingNotifications) {
+    try {
+      const { token } = await createFeedbackRecord(userId, notification.event.id);
+      feedbackTokens[notification.event.id] = token;
+    } catch {
+      // Skip if feedback record already exists
+    }
+  }
+
+  return {
+    pendingNotifications: pendingNotifications.map((n) => ({
+      id: n.id,
+      event: n.event as EventWithModule,
+    })),
+    groupedEvents,
+    feedbackTokens,
+  };
+}
+
+/**
+ * Mark notifications as sent.
+ */
+async function markNotificationsSent(notificationIds: string[]): Promise<void> {
+  if (notificationIds.length === 0) return;
+
+  await prisma.notificationOutbox.updateMany({
+    where: { id: { in: notificationIds } },
+    data: { status: "sent", sentAt: new Date() },
+  });
+}
+
+// =============================================================================
+// MAIN JOB HANDLER
+// =============================================================================
+
+/**
+ * GET handler for daily digest job.
+ *
+ * Query params:
+ * - force=true: Send even if content is minimal
+ * - skipEnhanced=true: Skip LLM-powered features (faster, for testing)
+ */
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  // Verify authorization
   if (!verifyCronSecret(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const { searchParams } = new URL(request.url);
+  const force = searchParams.get("force") === "true";
+  const skipEnhanced = searchParams.get("skipEnhanced") === "true";
+
+  const result: DigestJobResult = {
+    success: false,
+    totalUsers: 0,
+    digestsSent: 0,
+    skipped: 0,
+    failed: 0,
+    mode: "standard",
+    errors: [],
+  };
+
   try {
     const now = new Date();
 
-    // Get free tier users
-    // All users have emailOptInAt set (required field with default),
-    // so we only need to filter by tier
-    const freeUsers = await prisma.user.findMany({
-      where: {
-        tier: "free",
+    // -------------------------------------------------------------------------
+    // 1. Generate Enhanced Digest (shared across all users)
+    // -------------------------------------------------------------------------
+    let enhancedDigest: DailyDigestContent | null = null;
+
+    if (!skipEnhanced) {
+      const { digest, errors } = await generateEnhancedDigestSafe();
+      enhancedDigest = digest;
+      result.errors.push(...errors);
+
+      if (enhancedDigest && isDigestViable(enhancedDigest)) {
+        result.mode = "enhanced";
+        result.enhancedDigestStats = {
+          horizonAlerts: enhancedDigest.horizon.alerts.length,
+          deepDiveClusters: enhancedDigest.deepDive.clusters.length,
+          briefingItems: enhancedDigest.briefing.items.length,
+          agendaEvents: enhancedDigest.agenda.events.length,
+          tokensUsed: enhancedDigest.meta.tokensUsed,
+          estimatedCost: `$${enhancedDigest.meta.estimatedCost.toFixed(4)}`,
+          processingTimeMs: enhancedDigest.meta.processingTimeMs,
+          errors: enhancedDigest.meta.errors,
+        };
+      } else if (!enhancedDigest) {
+        result.mode = "fallback";
+        console.warn("[DailyDigest] Enhanced digest failed, using fallback mode");
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. Query Users to Send To
+    // -------------------------------------------------------------------------
+    // Get all users (emailOptInAt is required with default, so all users have it)
+    // In future: add unsubscribe tracking field to filter out
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        tier: true,
       },
     });
 
-    let digests = 0;
-    let skipped = 0;
-    let failed = 0;
+    result.totalUsers = users.length;
+    console.log(`[DailyDigest] Processing ${users.length} users`);
 
-    for (const user of freeUsers) {
+    // -------------------------------------------------------------------------
+    // 3. Process Each User
+    // -------------------------------------------------------------------------
+    for (const user of users) {
       try {
-        // Get pending email notifications for this user that are ready to send
-        const pendingNotifications = await prisma.notificationOutbox.findMany({
-          where: {
-            userId: user.id,
-            channel: "email",
-            status: "pending",
-            scheduledFor: { lte: now },
-          },
-          include: {
-            event: {
-              include: {
-                source: {
-                  include: { module: true },
-                },
-              },
-            },
-          },
-        });
+        const isPremium = user.tier === "premium";
 
-        // Skip users with no pending notifications
-        if (pendingNotifications.length === 0) {
-          skipped++;
+        // Get pending notifications for this user
+        const { pendingNotifications, groupedEvents, feedbackTokens } =
+          await processPendingNotifications(user.id, now);
+
+        // Determine if we have content to send
+        const hasNotifications = pendingNotifications.length > 0;
+        const hasEnhancedContent = enhancedDigest && isDigestViable(enhancedDigest);
+
+        if (!hasNotifications && !hasEnhancedContent && !force) {
+          result.skipped++;
           continue;
         }
 
-        // Group events by module for organized digest sections
-        const byModule: GroupedEvents = {};
-        for (const notification of pendingNotifications) {
-          const moduleId = notification.event.source.moduleId;
-          if (!byModule[moduleId]) {
-            byModule[moduleId] = [];
-          }
-          byModule[moduleId].push(notification.event as EventWithModule);
-        }
-
-        // Create feedback records with tokens for each event
-        // This enables thumbs up/down voting in the email
-        const feedbackTokens: FeedbackTokenMap = {};
-        for (const notification of pendingNotifications) {
-          try {
-            const { token } = await createFeedbackRecord(
-              user.id,
-              notification.event.id
-            );
-            feedbackTokens[notification.event.id] = token;
-          } catch (feedbackError) {
-            // If feedback record already exists (unique constraint), skip silently
-            // This can happen if a digest is re-sent or event appears multiple times
-            console.log(
-              `[Daily Digest] Skipped feedback record for event ${notification.event.id}: ${
-                feedbackError instanceof Error ? feedbackError.message : "Unknown error"
-              }`
-            );
-          }
-        }
-
-        // Get user's referral code for the viral growth section
-        // This creates a shareable code if the user doesn't have one yet
+        // Get referral code for this user
         const referralCode = await getReferralCode(user.id);
 
-        // Build and send digest email with feedback links and referral section
-        const html = buildDigestHtml(byModule, undefined, user.id, feedbackTokens, referralCode);
-        const subject = buildDigestSubject(pendingNotifications.length);
+        // Build email content
+        let html: string;
+        let subject: string;
 
+        if (enhancedDigest && result.mode === "enhanced") {
+          // Use enhanced digest template
+          html = buildEnhancedDigestHtml(enhancedDigest, {
+            isPremium,
+            referralCode: referralCode || undefined,
+          });
+          const dateStr = enhancedDigest.meta.generatedAt.toFormat("MMMM d");
+          subject = `CityPing Daily - ${dateStr}`;
+        } else if (hasNotifications) {
+          // Fallback to standard notification digest
+          html = buildDigestHtml(
+            groupedEvents,
+            undefined,
+            user.id,
+            feedbackTokens,
+            referralCode
+          );
+          subject = buildDigestSubject(pendingNotifications.length);
+        } else {
+          // No content to send
+          result.skipped++;
+          continue;
+        }
+
+        // Send email
         await sendEmail({
           to: user.email,
           subject,
           html,
+          text: enhancedDigest ? buildEnhancedDigestText(enhancedDigest) : undefined,
         });
 
-        // Mark all notifications as sent using updateMany for efficiency
-        await prisma.notificationOutbox.updateMany({
-          where: {
-            id: { in: pendingNotifications.map((n) => n.id) },
-          },
-          data: {
-            status: "sent",
-            sentAt: new Date(),
-          },
-        });
+        // Mark notifications as sent
+        await markNotificationsSent(pendingNotifications.map((n) => n.id));
 
-        digests++;
+        result.digestsSent++;
         console.log(
-          `[Daily Digest] Sent digest to ${user.email} with ${pendingNotifications.length} events`
+          `[DailyDigest] Sent to ${user.email} (${result.mode}, ${
+            hasNotifications ? pendingNotifications.length + " notifications" : "enhanced only"
+          })`
         );
       } catch (error) {
-        // Log error but continue processing other users
-        console.error(`[Daily Digest] Failed to send digest to ${user.email}:`, error);
-        failed++;
+        result.failed++;
+        const errorMsg = `Failed to send to ${user.email}: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`;
+        console.error(`[DailyDigest] ${errorMsg}`);
+        result.errors.push(errorMsg);
       }
     }
 
+    // -------------------------------------------------------------------------
+    // 4. Final Summary
+    // -------------------------------------------------------------------------
+    result.success = result.failed === 0 || result.digestsSent > 0;
+
     console.log(
-      `[Daily Digest] Completed: ${freeUsers.length} users, ${digests} digests sent, ${skipped} skipped, ${failed} failed`
+      `[DailyDigest] Complete: ${result.digestsSent} sent, ${result.skipped} skipped, ${result.failed} failed (${result.mode} mode)`
     );
 
-    return NextResponse.json({
-      users: freeUsers.length,
-      digests,
-      skipped,
-      failed,
-    });
+    return NextResponse.json(result);
   } catch (error) {
-    console.error("[Daily Digest] Job failed:", error);
-    return NextResponse.json(
-      {
-        error: "Job failed",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 }
-    );
+    const errorMsg = `Job failed: ${
+      error instanceof Error ? error.message : "Unknown error"
+    }`;
+    console.error(`[DailyDigest] ${errorMsg}`, error);
+    result.errors.push(errorMsg);
+    return NextResponse.json(result, { status: 500 });
   }
 }
 
 /**
  * POST handler - alias to GET for flexibility.
- *
- * Some cron systems prefer POST. This ensures the endpoint works
- * regardless of HTTP method configuration.
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   return GET(request);
 }

@@ -1,6 +1,8 @@
 /**
  * CONTENT CURATOR AGENT
  *
+ * Stage 2.5 (Extension) of the CityPing multi-agent pipeline.
+ *
  * Role: The Editor-in-Chief
  *
  * Responsibilities:
@@ -11,12 +13,37 @@
  * - Generate "why you should care" context for each story
  * - Balance content mix (don't send 5 crime stories)
  *
+ * Output: CurationResult with deduplication stats
+ *
  * Philosophy: A busy New Yorker has 2 minutes. What MUST they know today?
  */
 
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "../db";
 import { DateTime } from "luxon";
+
+// Import unified types and scoring
+import {
+  scoreContent,
+  categorizeContent as unifyCategorize,
+  generateDedupKey as generateDedupKeyV2,
+  areTitlesSimilar,
+  meetsQualityThreshold,
+} from "./scoring";
+
+import type {
+  ContentSelectionV2,
+  CurationResult as CurationResultV2,
+  CurationConfig,
+  CuratedContent,
+  ScoredNewsArticle,
+  ScoredAlertEvent,
+  ScoredParkEvent,
+  ScoredDiningDeal,
+  ContentCategory as ContentCategoryV2,
+} from "./types";
+
+import { DEFAULT_CURATION_CONFIG } from "./types";
 
 // =============================================================================
 // TYPES
@@ -507,4 +534,245 @@ export async function curateFromDatabase(): Promise<CurationResult> {
   ];
 
   return curateContent(items);
+}
+
+// =============================================================================
+// V2 CURATION - Accepts ContentSelectionV2, uses unified scoring
+// =============================================================================
+
+type ScoredItem = ScoredNewsArticle | ScoredAlertEvent | ScoredParkEvent | ScoredDiningDeal;
+
+/**
+ * Curate content from ContentSelectionV2.
+ *
+ * This is the Stage 2.5 function for the V2 pipeline.
+ *
+ * Key improvements:
+ * - Accepts pre-scored content from selectBestContentV2
+ * - Uses unified scoring (already applied)
+ * - Focuses on deduplication and "why you should care" generation
+ * - Returns CurationResult with detailed stats
+ */
+export async function curateContentV2(
+  selection: ContentSelectionV2,
+  config: Partial<CurationConfig> = {}
+): Promise<CurationResultV2> {
+  const cfg = { ...DEFAULT_CURATION_CONFIG, ...config };
+
+  console.log("┌──────────────────────────────────────────────────────────────┐");
+  console.log("│  STAGE 2.5: CONTENT CURATOR - Curating Selection            │");
+  console.log("└──────────────────────────────────────────────────────────────┘");
+
+  const startTime = Date.now();
+
+  // Combine all content from selection (already scored)
+  const allContent: ScoredItem[] = [
+    ...selection.news,
+    ...selection.alerts,
+    ...selection.events,
+    ...selection.dining,
+  ];
+
+  const totalInput = allContent.length;
+  console.log(`[Curator] Processing ${totalInput} pre-scored items`);
+
+  const dropped: CurationResultV2["dropped"] = [];
+
+  // Step 1: Additional deduplication across content types
+  // (selectBestContentV2 dedupes within types, but not across)
+  const dedupMap = new Map<string, ScoredItem>();
+  let duplicatesRemoved = 0;
+
+  for (const item of allContent) {
+    const key = item.dedupKey;
+    const existing = dedupMap.get(key);
+
+    if (existing) {
+      // Keep the one with higher score
+      if (item.scores.overall > existing.scores.overall) {
+        dropped.push({
+          item: existing,
+          reason: `Duplicate of "${getItemTitle(item)}" (lower score)`,
+        });
+        dedupMap.set(key, item);
+      } else {
+        dropped.push({
+          item,
+          reason: `Duplicate of "${getItemTitle(existing)}" (lower score)`,
+        });
+      }
+      duplicatesRemoved++;
+    } else {
+      // Check for fuzzy duplicates
+      let isFuzzyDupe = false;
+      for (const [, existingItem] of dedupMap) {
+        if (areTitlesSimilar(getItemTitle(item), getItemTitle(existingItem), 0.6)) {
+          if (item.scores.overall > existingItem.scores.overall) {
+            dropped.push({
+              item: existingItem,
+              reason: `Similar to "${getItemTitle(item)}" (lower score)`,
+            });
+            dedupMap.delete(existingItem.dedupKey);
+            dedupMap.set(key, item);
+          } else {
+            dropped.push({
+              item,
+              reason: `Similar to "${getItemTitle(existingItem)}" (lower score)`,
+            });
+          }
+          duplicatesRemoved++;
+          isFuzzyDupe = true;
+          break;
+        }
+      }
+      if (!isFuzzyDupe) {
+        dedupMap.set(key, item);
+      }
+    }
+  }
+
+  const afterDedup = dedupMap.size;
+  console.log(`[Curator] After dedup: ${afterDedup} items (removed ${duplicatesRemoved} duplicates)`);
+
+  // Step 2: Sort by overall score
+  const dedupedItems = Array.from(dedupMap.values());
+  dedupedItems.sort((a, b) => b.scores.overall - a.scores.overall);
+
+  // Step 3: Group by category with limits
+  const byCategory: Record<ContentCategoryV2, CuratedContent[]> = {
+    breaking: [],
+    essential: [],
+    money: [],
+    local: [],
+    civic: [],
+    culture: [],
+    lifestyle: [],
+  };
+
+  const maxPerCat = cfg.maxPerCategory || 3;
+
+  for (const item of dedupedItems) {
+    if (byCategory[item.category].length < maxPerCat) {
+      byCategory[item.category].push({
+        item,
+        whyYouShouldCare: undefined, // Will be generated below if enabled
+      });
+    }
+  }
+
+  // Step 4: Select top stories with balanced mix
+  const curatedContent: CuratedContent[] = [];
+  const maxTotal = cfg.maxTotal || 12;
+  const categoryPriority: ContentCategoryV2[] = [
+    "breaking", "essential", "money", "local", "culture", "civic", "lifestyle"
+  ];
+
+  // First pass: take top from each category
+  for (const category of categoryPriority) {
+    if (byCategory[category].length > 0 && curatedContent.length < maxTotal) {
+      curatedContent.push(byCategory[category][0]);
+    }
+  }
+
+  // Second pass: fill remaining with highest scored
+  const alreadySelected = new Set(curatedContent.map(c => c.item.dedupKey));
+  for (const item of dedupedItems) {
+    if (curatedContent.length >= maxTotal) break;
+    if (!alreadySelected.has(item.dedupKey)) {
+      curatedContent.push({ item });
+      alreadySelected.add(item.dedupKey);
+    }
+  }
+
+  // Step 5: Generate "why you should care" for top items (if enabled)
+  if (cfg.generateWhyCare) {
+    const topItems = curatedContent.slice(0, 5);
+    console.log(`[Curator] Generating "why you should care" for top ${topItems.length} items`);
+
+    const enriched = await generateWhyYouShouldCareV2(topItems);
+    for (let i = 0; i < enriched.length; i++) {
+      curatedContent[i] = enriched[i];
+    }
+  }
+
+  // Calculate stats
+  const avgRelevance = curatedContent.length > 0
+    ? Math.round(curatedContent.reduce((sum, c) => sum + c.item.scores.relevance, 0) / curatedContent.length)
+    : 0;
+
+  const lowQualityFiltered = dropped.filter(d => d.reason.includes("low")).length;
+
+  const duration = Date.now() - startTime;
+  console.log(`[Curator] Curated ${curatedContent.length} items in ${duration}ms`);
+
+  return {
+    curatedContent,
+    byCategory,
+    stats: {
+      totalInput,
+      afterDedup,
+      selected: curatedContent.length,
+      duplicatesRemoved,
+      lowQualityFiltered,
+      avgRelevance,
+    },
+    dropped,
+  };
+}
+
+/**
+ * Get title from any scored item type.
+ */
+function getItemTitle(item: ScoredItem): string {
+  if ("title" in item) return item.title;
+  if ("name" in item) return item.name;
+  return "Unknown";
+}
+
+/**
+ * Generate "why you should care" for curated items using Claude.
+ */
+async function generateWhyYouShouldCareV2(items: CuratedContent[]): Promise<CuratedContent[]> {
+  if (items.length === 0) return items;
+
+  const anthropic = new Anthropic();
+
+  const itemSummaries = items.map((c, i) => {
+    const title = getItemTitle(c.item);
+    const summary = "summary" in c.item ? c.item.summary :
+                    "body" in c.item ? c.item.body :
+                    "description" in c.item ? c.item.description : "";
+    return `${i + 1}. ${title}${summary ? ` - ${summary}` : ""}`;
+  }).join("\n");
+
+  const prompt = `You are a NYC local news editor. For each story, write a single punchy sentence (max 15 words) explaining why a busy New Yorker should care. Be specific and actionable.
+
+Stories:
+${itemSummaries}
+
+Respond with JSON array of strings, one per story:
+["sentence 1", "sentence 2", ...]`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-3-5-haiku-latest",
+      max_tokens: 500,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const text = response.content[0].type === "text" ? response.content[0].text : "";
+    const match = text.match(/\[[\s\S]*\]/);
+
+    if (match) {
+      const reasons = JSON.parse(match[0]) as string[];
+      return items.map((item, i) => ({
+        ...item,
+        whyYouShouldCare: reasons[i] || undefined,
+      }));
+    }
+  } catch (error) {
+    console.error("[Curator] Failed to generate why-you-should-care:", error);
+  }
+
+  return items;
 }
