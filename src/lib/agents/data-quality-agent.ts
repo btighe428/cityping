@@ -699,6 +699,7 @@ export async function selectBestContentV2(
     }),
     prisma.alertEvent.findMany({
       where: { createdAt: { gte: lookbackDate } },
+      include: { source: { select: { moduleId: true } } },
       orderBy: { createdAt: "desc" },
       take: fetchLimit,
     }),
@@ -755,17 +756,21 @@ export async function selectBestContentV2(
   // Score and filter alerts
   const scoredAlerts: ScoredAlertEvent[] = rawAlerts
     .map((alert) => {
+      // Housing alerts get lower relevance
+      const isHousing = alert.source?.moduleId === "housing";
       const scores = scoreContent({
         title: alert.title,
         body: alert.body,
         publishedAt: alert.createdAt,
-        contentType: "alert",
+        contentType: isHousing ? "housing" : "alert",
       });
       const category = categorizeContent(alert.title, alert.body, "alert");
       const dedupKey = generateDedupKey("alert", alert.title);
 
+      // Strip source relation before spreading to match ScoredAlertEvent type
+      const { source, ...alertWithoutSource } = alert;
       return {
-        ...alert,
+        ...alertWithoutSource,
         scores,
         category,
         dedupKey,
@@ -1040,7 +1045,7 @@ export async function selectBestContentV2Semantic(
     fetchLimit
   );
 
-  // Fetch alert events with embeddings
+  // Fetch alert events with embeddings (join with source to get moduleId for housing detection)
   const rawAlertsWithEmbeddings = await prisma.$queryRawUnsafe<
     Array<{
       id: string;
@@ -1048,12 +1053,14 @@ export async function selectBestContentV2Semantic(
       body: string | null;
       created_at: Date;
       embedding: string | null;
+      module_id: string | null;
     }>
   >(
-    `SELECT id, title, body, created_at, embedding::text
-     FROM "alert_events"
-     WHERE created_at >= $1
-     ORDER BY created_at DESC
+    `SELECT ae.id, ae.title, ae.body, ae.created_at, ae.embedding::text, s.module_id
+     FROM "alert_events" ae
+     LEFT JOIN "alert_sources" s ON ae.source_id = s.id
+     WHERE ae.created_at >= $1
+     ORDER BY ae.created_at DESC
      LIMIT $2`,
     lookbackDate,
     fetchLimit
@@ -1161,11 +1168,13 @@ export async function selectBestContentV2Semantic(
   const alertsWithEmbeddings = rawAlertsWithEmbeddings.filter(a => a.embedding);
 
   const scoredAlerts: ScoredAlertEvent[] = rawAlertsWithEmbeddings.map((alert) => {
+    // Housing alerts get lower relevance
+    const isHousing = alert.module_id === "housing";
     const scores = scoreContent({
       title: alert.title,
       body: alert.body,
       publishedAt: alert.created_at,
-      contentType: "alert",
+      contentType: isHousing ? "housing" : "alert",
     });
     const category = categorizeContent(alert.title, alert.body, "alert");
     const dedupKey = generateDedupKey("alert", alert.title);

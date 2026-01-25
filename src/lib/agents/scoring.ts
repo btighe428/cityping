@@ -232,7 +232,7 @@ export function scoreRelevance(text: string, source?: string): number {
  */
 export function scoreImpact(
   text: string,
-  contentType?: "news" | "alert" | "event" | "deal" | "civic" | "weather" | "transit"
+  contentType?: "news" | "alert" | "event" | "deal" | "civic" | "weather" | "transit" | "housing"
 ): number {
   const lowerText = text.toLowerCase();
   let score = 40; // Base score
@@ -280,6 +280,9 @@ export function scoreImpact(
       break;
     case "deal":
       score += 5;
+      break;
+    case "housing":
+      score -= 25; // Low relevance - housing lotteries rarely urgent
       break;
     default:
       break;
@@ -347,7 +350,7 @@ export function scoreContent(data: {
   source?: string | null;
   publishedAt?: Date | null;
   createdAt?: Date | null;
-  contentType?: "news" | "alert" | "event" | "deal" | "civic" | "weather" | "transit";
+  contentType?: "news" | "alert" | "event" | "deal" | "civic" | "weather" | "transit" | "housing";
 }): ContentScores {
   const text = `${data.title || ""} ${data.body || data.summary || ""}`;
   const publishDate = data.publishedAt || data.createdAt || null;
