@@ -34,10 +34,7 @@ import {
   selectBestContentV2Semantic,
   ContentSelectionV2Semantic,
 } from "./data-quality-agent";
-import {
-  generateNanoAppSubject,
-  type NanoAppSubject,
-} from "./subject-line-nano-app";
+import type { NanoAppSubject } from "./subject-line-nano-app";
 import type { ScoredNewsArticle, ScoredAlertEvent } from "./types";
 
 // =============================================================================
@@ -339,36 +336,45 @@ export async function generateDailyDigest(
   }
 
   // -------------------------------------------------------------------------
-  // 6. SUBJECT LINE - Generate via nano app
+  // 6. SUBJECT LINE - Generate directly
   // -------------------------------------------------------------------------
   let subjectLine: NanoAppSubject | null = null;
   try {
-    // Build content selection format for subject line generator
-    const contentForSubject = {
-      news: news.map((n) => ({
-        id: n.id,
-        title: n.title,
-        summary: n.summary || n.snippet || "",
-        source: n.source || "Unknown",
-        url: n.url || "",
-        publishedAt: n.publishedAt,
-        scores: n.scores,
-      })),
-      alerts: alerts.map((a) => ({
-        id: a.id,
-        title: a.title,
-        body: a.body || "",
-        sourceId: a.sourceId,
-      })),
-      parks: [],
-      dining: [],
-    };
+    const dayDate = today.toFormat("EEE, LLL d"); // "Fri, Jan 24"
+    const weatherBite = weather
+      ? `${weather.emoji} ${weather.high}°F ${weather.condition.split(" ")[0].toLowerCase()}`
+      : "";
 
-    subjectLine = await generateNanoAppSubject(contentForSubject as any, {
-      temp: weather?.temp || 40,
-      condition: weather?.condition || "cloudy",
-      emoji: weather?.emoji || "☁️",
-    });
+    // Find the top story hook
+    let hook = "";
+    let hookEmoji = "📰";
+
+    if (horizonAlerts.length > 0 && horizonAlerts[0].urgency === "high") {
+      // Lead with urgent horizon alert
+      hook = `${horizonAlerts[0].event.icon} ${horizonAlerts[0].event.shortTitle}: ${horizonAlerts[0].message.slice(0, 40)}`;
+      hookEmoji = horizonAlerts[0].event.icon;
+    } else if (clusters.length > 0) {
+      // Lead with top cluster
+      const topCluster = clusters[0];
+      hook = `📰 ${topCluster.theme}: ${topCluster.headline.slice(0, 40)}`;
+    } else if (alerts.length > 0) {
+      // Lead with top alert
+      hook = `🔔 ${alerts[0].title.slice(0, 50)}`;
+    } else if (news.length > 0) {
+      // Lead with top news
+      hook = `📰 ${news[0].title.slice(0, 50)}`;
+    }
+
+    const full = `NYC TODAY ${dayDate} ${weatherBite} ${hook}`.trim();
+
+    subjectLine = {
+      full: full.slice(0, 120), // Max 120 chars
+      preheader: clusters.length > 0
+        ? `Plus ${clusters.length} story clusters and ${briefingItems.length} quick hits`
+        : `${news.length} stories, ${alerts.length} alerts for your day`,
+      bites: [],
+      characterCount: full.length,
+    };
   } catch (error) {
     errors.push(
       `Subject line generation failed: ${error instanceof Error ? error.message : "Unknown error"}`
