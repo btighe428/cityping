@@ -1,6 +1,8 @@
 /**
  * DATA QUALITY AGENT
  *
+ * Stage 2 of the CityPing multi-agent pipeline.
+ *
  * Role: The Quality Assurance Director
  *
  * Responsibilities:
@@ -12,11 +14,37 @@
  * - Alert on degraded data quality
  * - Auto-heal common issues (retry failed scrapers, clean bad data)
  *
+ * Output: ContentSelectionV2 with full Prisma records and scores
+ *
  * Philosophy: Bad data is worse than no data. Catch problems before users see them.
  */
 
 import { prisma } from "../db";
 import { DateTime } from "luxon";
+
+// Import unified types and scoring
+import {
+  scoreContent,
+  categorizeContent,
+  generateDedupKey,
+  meetsQualityThreshold,
+  QUALITY_THRESHOLDS,
+} from "./scoring";
+
+import { DATA_SOURCES as UNIFIED_DATA_SOURCES } from "./data-sources";
+
+import type {
+  ContentSelectionV2,
+  SelectionConfigV2,
+  ScoredNewsArticle,
+  ScoredAlertEvent,
+  ScoredParkEvent,
+  ScoredDiningDeal,
+  ContentCategory,
+  ContentScores,
+} from "./types";
+
+import { DEFAULT_SELECTION_CONFIG } from "./types";
 
 // =============================================================================
 // TYPES
@@ -619,3 +647,706 @@ export async function selectBestContent(config?: SelectionConfig): Promise<Conte
  * Alias for generateDataQualityReport.
  */
 export const getDataQualityReport = generateDataQualityReport;
+
+// =============================================================================
+// V2 CONTENT SELECTION - Returns full Prisma records with unified scoring
+// =============================================================================
+
+/**
+ * Select best content using unified scoring algorithm.
+ * Returns full Prisma records (not just IDs) with scores and category groupings.
+ *
+ * This is the main Stage 2 output function for the V2 pipeline.
+ *
+ * Key improvements over selectBestContent:
+ * - Actually enforces maxNews, maxAlerts, maxDeals, maxEvents
+ * - Returns full Prisma records for downstream processing
+ * - Uses unified scoring algorithm from ./scoring.ts
+ * - Groups content by category for curation stage
+ */
+export async function selectBestContentV2(
+  config: SelectionConfigV2 = {}
+): Promise<ContentSelectionV2> {
+  const cfg = { ...DEFAULT_SELECTION_CONFIG, ...config };
+  const now = DateTime.now();
+  const lookbackDate = now.minus({ hours: cfg.lookbackHours || 48 }).toJSDate();
+
+  console.log("┌──────────────────────────────────────────────────────────────┐");
+  console.log("│  STAGE 2: DATA QUALITY AGENT - Selecting Best Content       │");
+  console.log("└──────────────────────────────────────────────────────────────┘");
+  console.log(`[DataQuality] Config: maxNews=${cfg.maxNews}, maxAlerts=${cfg.maxAlerts}, maxDeals=${cfg.maxDeals}, maxEvents=${cfg.maxEvents}`);
+  console.log(`[DataQuality] Quality threshold: ${cfg.minQualityScore}, Lookback: ${cfg.lookbackHours}h`);
+
+  // Fetch content from database - get more than we need for filtering
+  const fetchLimit = Math.max(
+    (cfg.maxNews || 5) * 3,
+    (cfg.maxAlerts || 3) * 3,
+    (cfg.maxDeals || 3) * 3,
+    (cfg.maxEvents || 4) * 3,
+    50
+  );
+
+  const [rawNews, rawAlerts, rawEvents, rawDining] = await Promise.all([
+    prisma.newsArticle.findMany({
+      where: {
+        OR: [
+          { publishedAt: { gte: lookbackDate } },
+          { createdAt: { gte: lookbackDate } },
+        ],
+      },
+      orderBy: { publishedAt: "desc" },
+      take: fetchLimit,
+    }),
+    prisma.alertEvent.findMany({
+      where: { createdAt: { gte: lookbackDate } },
+      orderBy: { createdAt: "desc" },
+      take: fetchLimit,
+    }),
+    prisma.parkEvent.findMany({
+      where: {
+        date: {
+          gte: new Date(),
+          lte: now.plus({ days: 7 }).toJSDate(),
+        },
+      },
+      orderBy: { date: "asc" },
+      take: fetchLimit,
+    }).catch(() => []),
+    prisma.diningDeal.findMany({
+      where: {
+        endDate: { gte: new Date() },
+      },
+      orderBy: { fetchedAt: "desc" },
+      take: fetchLimit,
+    }).catch(() => []),
+  ]);
+
+  const totalEvaluated = rawNews.length + rawAlerts.length + rawEvents.length + rawDining.length;
+  console.log(`[DataQuality] Evaluating ${totalEvaluated} items (${rawNews.length} news, ${rawAlerts.length} alerts, ${rawEvents.length} events, ${rawDining.length} dining)`);
+
+  // Score and filter news articles
+  const scoredNews: ScoredNewsArticle[] = rawNews
+    .map((article) => {
+      const scores = scoreContent({
+        title: article.title,
+        body: article.summary || article.snippet,
+        url: article.url,
+        source: article.source,
+        publishedAt: article.publishedAt,
+        contentType: "news",
+      });
+      const category = categorizeContent(article.title, article.summary || article.snippet);
+      const dedupKey = generateDedupKey("news", article.title);
+
+      return {
+        ...article,
+        scores,
+        category,
+        dedupKey,
+      };
+    })
+    .filter((item) => meetsQualityThreshold(item.scores, cfg.minQualityScore))
+    .sort((a, b) => b.scores.overall - a.scores.overall);
+
+  // Deduplicate news by dedupKey
+  const newsDeduped = deduplicateByKey(scoredNews);
+  const selectedNews = newsDeduped.slice(0, cfg.maxNews || 5);
+
+  // Score and filter alerts
+  const scoredAlerts: ScoredAlertEvent[] = rawAlerts
+    .map((alert) => {
+      const scores = scoreContent({
+        title: alert.title,
+        body: alert.body,
+        publishedAt: alert.createdAt,
+        contentType: "alert",
+      });
+      const category = categorizeContent(alert.title, alert.body, "alert");
+      const dedupKey = generateDedupKey("alert", alert.title);
+
+      return {
+        ...alert,
+        scores,
+        category,
+        dedupKey,
+      };
+    })
+    .filter((item) => meetsQualityThreshold(item.scores, cfg.minQualityScore))
+    .sort((a, b) => b.scores.overall - a.scores.overall);
+
+  const alertsDeduped = deduplicateByKey(scoredAlerts);
+  const selectedAlerts = alertsDeduped.slice(0, cfg.maxAlerts || 3);
+
+  // Score and filter events
+  const scoredEvents: ScoredParkEvent[] = rawEvents
+    .map((event) => {
+      const scores = scoreContent({
+        title: event.name,
+        body: event.description,
+        publishedAt: event.createdAt,
+        contentType: "event",
+      });
+      const category = categorizeContent(event.name, event.description, "event");
+      const dedupKey = generateDedupKey("event", event.name);
+
+      return {
+        ...event,
+        scores,
+        category,
+        dedupKey,
+      };
+    })
+    .filter((item) => meetsQualityThreshold(item.scores, cfg.minQualityScore))
+    .sort((a, b) => b.scores.overall - a.scores.overall);
+
+  const eventsDeduped = deduplicateByKey(scoredEvents);
+  const selectedEvents = eventsDeduped.slice(0, cfg.maxEvents || 4);
+
+  // Score and filter dining deals
+  const scoredDining: ScoredDiningDeal[] = rawDining
+    .map((deal) => {
+      const scores = scoreContent({
+        title: deal.title,
+        body: deal.description,
+        source: deal.restaurant || undefined,
+        publishedAt: deal.fetchedAt,
+        contentType: "deal",
+      });
+      const category: ContentCategory = "money";
+      const dedupKey = generateDedupKey("deal", deal.title);
+
+      return {
+        ...deal,
+        scores,
+        category,
+        dedupKey,
+      };
+    })
+    .filter((item) => meetsQualityThreshold(item.scores, cfg.minQualityScore))
+    .sort((a, b) => b.scores.overall - a.scores.overall);
+
+  const diningDeduped = deduplicateByKey(scoredDining);
+  const selectedDining = diningDeduped.slice(0, cfg.maxDeals || 3);
+
+  // Build byCategory grouping
+  const allSelected = [
+    ...selectedNews,
+    ...selectedAlerts,
+    ...selectedEvents,
+    ...selectedDining,
+  ];
+
+  const byCategory: Record<ContentCategory, Array<ScoredNewsArticle | ScoredAlertEvent | ScoredParkEvent | ScoredDiningDeal>> = {
+    breaking: [],
+    essential: [],
+    money: [],
+    local: [],
+    civic: [],
+    culture: [],
+    lifestyle: [],
+  };
+
+  for (const item of allSelected) {
+    byCategory[item.category].push(item);
+  }
+
+  // Calculate statistics
+  const totalSelected = selectedNews.length + selectedAlerts.length + selectedEvents.length + selectedDining.length;
+  const avgQuality = totalSelected > 0
+    ? allSelected.reduce((sum, item) => sum + item.scores.overall, 0) / totalSelected
+    : 0;
+
+  // Determine top sources
+  const sourceCountMap = new Map<string, number>();
+  for (const article of selectedNews) {
+    const count = sourceCountMap.get(article.source) || 0;
+    sourceCountMap.set(article.source, count + 1);
+  }
+  const topSources = Array.from(sourceCountMap.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([source]) => source);
+
+  // Category breakdown
+  const categoryBreakdown: Record<ContentCategory, number> = {
+    breaking: byCategory.breaking.length,
+    essential: byCategory.essential.length,
+    money: byCategory.money.length,
+    local: byCategory.local.length,
+    civic: byCategory.civic.length,
+    culture: byCategory.culture.length,
+    lifestyle: byCategory.lifestyle.length,
+  };
+
+  console.log(`[DataQuality] Selected ${totalSelected} items (${selectedNews.length} news, ${selectedAlerts.length} alerts, ${selectedEvents.length} events, ${selectedDining.length} dining)`);
+  console.log(`[DataQuality] Average quality: ${avgQuality.toFixed(1)}`);
+  console.log(`[DataQuality] Top sources: ${topSources.join(", ") || "none"}`);
+
+  return {
+    news: selectedNews,
+    alerts: selectedAlerts,
+    events: selectedEvents,
+    dining: selectedDining,
+    byCategory,
+    summary: {
+      totalEvaluated,
+      totalSelected,
+      averageQuality: Math.round(avgQuality),
+      topSources,
+      categoryBreakdown,
+    },
+    configApplied: cfg,
+  };
+}
+
+/**
+ * Deduplicate items by their dedupKey, keeping highest scored item.
+ */
+function deduplicateByKey<T extends { dedupKey: string; scores: ContentScores }>(
+  items: T[]
+): T[] {
+  const seen = new Map<string, T>();
+
+  for (const item of items) {
+    const existing = seen.get(item.dedupKey);
+    if (!existing || item.scores.overall > existing.scores.overall) {
+      seen.set(item.dedupKey, item);
+    }
+  }
+
+  return Array.from(seen.values());
+}
+
+// =============================================================================
+// V2 SEMANTIC CONTENT SELECTION - Uses vector embeddings and topic clustering
+// =============================================================================
+
+import {
+  clusterItems,
+  selectTopClusters,
+  getClusterStats,
+  deduplicateItems,
+  type TopicCluster,
+  type ClusterStats,
+} from "../embeddings";
+
+/**
+ * Configuration for semantic content selection.
+ * Extends SelectionConfigV2 with semantic-specific options.
+ */
+export interface SemanticSelectionConfig extends SelectionConfigV2 {
+  /** Enable semantic clustering and deduplication */
+  semanticEnabled: boolean;
+  /** Similarity threshold for clustering (default 0.85) */
+  clusterSimilarityThreshold?: number;
+  /** Similarity threshold for deduplication (default 0.92) */
+  dedupSimilarityThreshold?: number;
+}
+
+/**
+ * Extended content selection result with semantic clustering data.
+ */
+export interface ContentSelectionV2Semantic extends ContentSelectionV2 {
+  /** Topic clusters for news and alerts */
+  clusters: {
+    news: TopicCluster[];
+    alerts: TopicCluster[];
+  };
+  /** Semantic processing statistics */
+  semanticStats: {
+    totalClustersFound: number;
+    avgClusterSize: number;
+    duplicatesRemoved: number;
+    newsWithEmbeddings: number;
+    alertsWithEmbeddings: number;
+  };
+}
+
+/**
+ * Select best content using semantic understanding.
+ *
+ * Key improvements over selectBestContentV2:
+ * - Groups related articles into topic clusters
+ * - Selects representative article from each cluster (not just top N)
+ * - Uses vector similarity for deduplication (catches paraphrased duplicates)
+ * - Falls back to keyword scoring for items without embeddings
+ *
+ * @param config - Selection configuration with semantic options
+ * @returns Content selection with cluster data
+ */
+export async function selectBestContentV2Semantic(
+  config: SemanticSelectionConfig
+): Promise<ContentSelectionV2Semantic> {
+  const cfg = {
+    ...DEFAULT_SELECTION_CONFIG,
+    ...config,
+    clusterSimilarityThreshold: config.clusterSimilarityThreshold ?? 0.85,
+    dedupSimilarityThreshold: config.dedupSimilarityThreshold ?? 0.92,
+  };
+
+  const now = DateTime.now();
+  const lookbackDate = now.minus({ hours: cfg.lookbackHours || 48 }).toJSDate();
+
+  console.log("┌──────────────────────────────────────────────────────────────┐");
+  console.log("│  STAGE 2: DATA QUALITY AGENT - Semantic Content Selection   │");
+  console.log("└──────────────────────────────────────────────────────────────┘");
+  console.log(`[DataQuality] Semantic mode: enabled=${cfg.semanticEnabled}`);
+  console.log(`[DataQuality] Cluster threshold: ${cfg.clusterSimilarityThreshold}, Dedup threshold: ${cfg.dedupSimilarityThreshold}`);
+
+  // If semantic not enabled, fall back to standard selection
+  if (!cfg.semanticEnabled) {
+    const standardResult = await selectBestContentV2(config);
+    return {
+      ...standardResult,
+      clusters: { news: [], alerts: [] },
+      semanticStats: {
+        totalClustersFound: 0,
+        avgClusterSize: 0,
+        duplicatesRemoved: 0,
+        newsWithEmbeddings: 0,
+        alertsWithEmbeddings: 0,
+      },
+    };
+  }
+
+  // Fetch content with embeddings using raw SQL for pgvector
+  const fetchLimit = Math.max(
+    (cfg.maxNews || 5) * 5,
+    (cfg.maxAlerts || 3) * 5,
+    100
+  );
+
+  // Fetch news articles with embeddings
+  const rawNewsWithEmbeddings = await prisma.$queryRawUnsafe<
+    Array<{
+      id: string;
+      title: string;
+      snippet: string | null;
+      summary: string | null;
+      source: string;
+      url: string;
+      published_at: Date;
+      created_at: Date;
+      embedding: string | null; // pgvector returns as string
+    }>
+  >(
+    `SELECT id, title, snippet, summary, source, url, published_at, created_at,
+            embedding::text
+     FROM "news_articles"
+     WHERE (published_at >= $1 OR created_at >= $1)
+     ORDER BY published_at DESC
+     LIMIT $2`,
+    lookbackDate,
+    fetchLimit
+  );
+
+  // Fetch alert events with embeddings
+  const rawAlertsWithEmbeddings = await prisma.$queryRawUnsafe<
+    Array<{
+      id: string;
+      title: string;
+      body: string | null;
+      created_at: Date;
+      embedding: string | null;
+    }>
+  >(
+    `SELECT id, title, body, created_at, embedding::text
+     FROM "alert_events"
+     WHERE created_at >= $1
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    lookbackDate,
+    fetchLimit
+  );
+
+  // Also fetch events and dining (these don't have embeddings yet)
+  const [rawEvents, rawDining] = await Promise.all([
+    prisma.parkEvent.findMany({
+      where: {
+        date: {
+          gte: new Date(),
+          lte: now.plus({ days: 7 }).toJSDate(),
+        },
+      },
+      orderBy: { date: "asc" },
+      take: fetchLimit,
+    }).catch(() => []),
+    prisma.diningDeal.findMany({
+      where: {
+        endDate: { gte: new Date() },
+      },
+      orderBy: { fetchedAt: "desc" },
+      take: fetchLimit,
+    }).catch(() => []),
+  ]);
+
+  // Parse embeddings and score news
+  const newsWithEmbeddings = rawNewsWithEmbeddings.filter(n => n.embedding);
+  const newsWithoutEmbeddings = rawNewsWithEmbeddings.filter(n => !n.embedding);
+
+  console.log(`[DataQuality] News: ${newsWithEmbeddings.length} with embeddings, ${newsWithoutEmbeddings.length} without`);
+
+  // Score all news articles
+  const scoredNews: ScoredNewsArticle[] = rawNewsWithEmbeddings.map((article) => {
+    const scores = scoreContent({
+      title: article.title,
+      body: article.summary || article.snippet,
+      url: article.url,
+      source: article.source,
+      publishedAt: article.published_at,
+      contentType: "news",
+    });
+    const category = categorizeContent(article.title, article.summary || article.snippet);
+    const dedupKey = generateDedupKey("news", article.title);
+
+    return {
+      id: article.id,
+      title: article.title,
+      snippet: article.snippet,
+      summary: article.summary,
+      source: article.source,
+      url: article.url,
+      publishedAt: article.published_at,
+      createdAt: article.created_at,
+      // These fields may not be in raw query, set defaults
+      externalId: "",
+      author: null,
+      imageUrl: null,
+      nycAngle: null,
+      isSelected: false,
+      curatedFor: null,
+      curatedAt: null,
+      embeddingModel: null,
+      embeddingAt: null,
+      topicClusterId: null,
+      scores,
+      category,
+      dedupKey,
+    } as ScoredNewsArticle;
+  });
+
+  // Prepare clusterable items for news with embeddings
+  const clusterableNews = newsWithEmbeddings.map((article) => {
+    const scored = scoredNews.find(s => s.id === article.id)!;
+    return {
+      id: article.id,
+      embedding: parseEmbedding(article.embedding!),
+      score: scored.scores.overall,
+      title: article.title,
+    };
+  });
+
+  // Cluster news articles
+  const newsClusters = clusterItems(clusterableNews, cfg.clusterSimilarityThreshold);
+  const newsClusterStats = getClusterStats(newsClusters);
+
+  console.log(`[DataQuality] News clusters: ${newsClusters.length}, avg size: ${newsClusterStats.avgClusterSize.toFixed(1)}`);
+
+  // Select top news clusters and get representative articles
+  const topNewsClusterIds = selectTopClusters(newsClusters, cfg.maxNews || 5);
+  const selectedNewsFromClusters = topNewsClusterIds
+    .map(id => scoredNews.find(n => n.id === id))
+    .filter((n): n is ScoredNewsArticle => n !== undefined);
+
+  // Add any high-scoring news without embeddings (fallback)
+  const newsWithoutEmbeddingsScored = scoredNews
+    .filter(n => !newsWithEmbeddings.some(e => e.id === n.id))
+    .filter(n => meetsQualityThreshold(n.scores, cfg.minQualityScore))
+    .slice(0, Math.max(0, (cfg.maxNews || 5) - selectedNewsFromClusters.length));
+
+  const selectedNews = [...selectedNewsFromClusters, ...newsWithoutEmbeddingsScored]
+    .slice(0, cfg.maxNews || 5);
+
+  // Score and cluster alerts
+  const alertsWithEmbeddings = rawAlertsWithEmbeddings.filter(a => a.embedding);
+
+  const scoredAlerts: ScoredAlertEvent[] = rawAlertsWithEmbeddings.map((alert) => {
+    const scores = scoreContent({
+      title: alert.title,
+      body: alert.body,
+      publishedAt: alert.created_at,
+      contentType: "alert",
+    });
+    const category = categorizeContent(alert.title, alert.body, "alert");
+    const dedupKey = generateDedupKey("alert", alert.title);
+
+    return {
+      id: alert.id,
+      title: alert.title,
+      body: alert.body,
+      createdAt: alert.created_at,
+      // Set defaults for fields not in raw query
+      sourceId: "",
+      externalId: null,
+      startsAt: null,
+      endsAt: null,
+      neighborhoods: [],
+      metadata: {},
+      expiresAt: null,
+      hypeScore: null,
+      hypeFactors: null,
+      venueType: null,
+      weatherScore: null,
+      isWeatherSafe: null,
+      embeddingModel: null,
+      embeddingAt: null,
+      topicClusterId: null,
+      scores,
+      category,
+      dedupKey,
+    } as ScoredAlertEvent;
+  });
+
+  const clusterableAlerts = alertsWithEmbeddings.map((alert) => {
+    const scored = scoredAlerts.find(s => s.id === alert.id)!;
+    return {
+      id: alert.id,
+      embedding: parseEmbedding(alert.embedding!),
+      score: scored.scores.overall,
+      title: alert.title,
+    };
+  });
+
+  const alertClusters = clusterItems(clusterableAlerts, cfg.clusterSimilarityThreshold);
+  const alertClusterStats = getClusterStats(alertClusters);
+
+  console.log(`[DataQuality] Alert clusters: ${alertClusters.length}, avg size: ${alertClusterStats.avgClusterSize.toFixed(1)}`);
+
+  const topAlertClusterIds = selectTopClusters(alertClusters, cfg.maxAlerts || 3);
+  const selectedAlerts = topAlertClusterIds
+    .map(id => scoredAlerts.find(a => a.id === id))
+    .filter((a): a is ScoredAlertEvent => a !== undefined)
+    .slice(0, cfg.maxAlerts || 3);
+
+  // Score events and dining (no semantic processing yet)
+  const scoredEvents: ScoredParkEvent[] = rawEvents
+    .map((event) => {
+      const scores = scoreContent({
+        title: event.name,
+        body: event.description,
+        publishedAt: event.createdAt,
+        contentType: "event",
+      });
+      const category = categorizeContent(event.name, event.description, "event");
+      const dedupKey = generateDedupKey("event", event.name);
+
+      return { ...event, scores, category, dedupKey };
+    })
+    .filter((item) => meetsQualityThreshold(item.scores, cfg.minQualityScore))
+    .sort((a, b) => b.scores.overall - a.scores.overall);
+
+  const selectedEvents = deduplicateByKey(scoredEvents).slice(0, cfg.maxEvents || 4);
+
+  const scoredDining: ScoredDiningDeal[] = rawDining
+    .map((deal) => {
+      const scores = scoreContent({
+        title: deal.title,
+        body: deal.description,
+        source: deal.restaurant || undefined,
+        publishedAt: deal.fetchedAt,
+        contentType: "deal",
+      });
+      const category: ContentCategory = "money";
+      const dedupKey = generateDedupKey("deal", deal.title);
+
+      return { ...deal, scores, category, dedupKey };
+    })
+    .filter((item) => meetsQualityThreshold(item.scores, cfg.minQualityScore))
+    .sort((a, b) => b.scores.overall - a.scores.overall);
+
+  const selectedDining = deduplicateByKey(scoredDining).slice(0, cfg.maxDeals || 3);
+
+  // Build byCategory grouping
+  const allSelected = [
+    ...selectedNews,
+    ...selectedAlerts,
+    ...selectedEvents,
+    ...selectedDining,
+  ];
+
+  const byCategory: Record<ContentCategory, Array<ScoredNewsArticle | ScoredAlertEvent | ScoredParkEvent | ScoredDiningDeal>> = {
+    breaking: [],
+    essential: [],
+    money: [],
+    local: [],
+    civic: [],
+    culture: [],
+    lifestyle: [],
+  };
+
+  for (const item of allSelected) {
+    byCategory[item.category].push(item);
+  }
+
+  // Calculate statistics
+  const totalSelected = selectedNews.length + selectedAlerts.length + selectedEvents.length + selectedDining.length;
+  const totalEvaluated = rawNewsWithEmbeddings.length + rawAlertsWithEmbeddings.length + rawEvents.length + rawDining.length;
+  const avgQuality = totalSelected > 0
+    ? allSelected.reduce((sum, item) => sum + item.scores.overall, 0) / totalSelected
+    : 0;
+
+  const sourceCountMap = new Map<string, number>();
+  for (const article of selectedNews) {
+    const count = sourceCountMap.get(article.source) || 0;
+    sourceCountMap.set(article.source, count + 1);
+  }
+  const topSources = Array.from(sourceCountMap.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([source]) => source);
+
+  const categoryBreakdown: Record<ContentCategory, number> = {
+    breaking: byCategory.breaking.length,
+    essential: byCategory.essential.length,
+    money: byCategory.money.length,
+    local: byCategory.local.length,
+    civic: byCategory.civic.length,
+    culture: byCategory.culture.length,
+    lifestyle: byCategory.lifestyle.length,
+  };
+
+  // Calculate duplicates removed (items in clusters but not selected)
+  const duplicatesRemoved =
+    (newsClusterStats.totalItems - newsClusters.length) +
+    (alertClusterStats.totalItems - alertClusters.length);
+
+  console.log(`[DataQuality] Selected ${totalSelected} items via semantic clustering`);
+  console.log(`[DataQuality] Duplicates removed: ${duplicatesRemoved}`);
+
+  return {
+    news: selectedNews,
+    alerts: selectedAlerts,
+    events: selectedEvents,
+    dining: selectedDining,
+    byCategory,
+    summary: {
+      totalEvaluated,
+      totalSelected,
+      averageQuality: Math.round(avgQuality),
+      topSources,
+      categoryBreakdown,
+    },
+    configApplied: cfg,
+    clusters: {
+      news: newsClusters,
+      alerts: alertClusters,
+    },
+    semanticStats: {
+      totalClustersFound: newsClusters.length + alertClusters.length,
+      avgClusterSize: (newsClusterStats.avgClusterSize + alertClusterStats.avgClusterSize) / 2,
+      duplicatesRemoved,
+      newsWithEmbeddings: newsWithEmbeddings.length,
+      alertsWithEmbeddings: alertsWithEmbeddings.length,
+    },
+  };
+}
+
+/**
+ * Parse pgvector embedding string back to number array.
+ * pgvector returns embeddings as "[0.1,0.2,...]" string format.
+ */
+function parseEmbedding(embeddingStr: string): number[] {
+  // Remove brackets and split by comma
+  const cleaned = embeddingStr.replace(/^\[|\]$/g, "");
+  return cleaned.split(",").map(Number);
+}

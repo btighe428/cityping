@@ -366,6 +366,12 @@ model AlertEvent {
   weatherScore  Float?     @map("weather_score") // Adjusted relevance score based on weather
   isWeatherSafe Boolean?   @map("is_weather_safe") // Whether event is safe given current/forecast weather
 
+  // Semantic embeddings for vector similarity search
+  embedding        Unsupported("vector(1536)")?
+  embeddingModel   String?    @map("embedding_model")
+  embeddingAt      DateTime?  @map("embedding_at") @db.Timestamptz
+  topicClusterId   String?    @map("topic_cluster_id")
+
   source        AlertSource          @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   notifications NotificationOutbox[]
   feedback      UserEventFeedback[]
@@ -663,6 +669,12 @@ model NewsArticle {
   isSelected  Boolean   @default(false) @map("is_selected") // Top 3 pick for the day
   curatedFor  DateTime? @map("curated_for") @db.Date // Date this was selected for
   curatedAt   DateTime? @map("curated_at") @db.Timestamptz
+
+  // Semantic embeddings for vector similarity search
+  embedding        Unsupported("vector(1536)")?
+  embeddingModel   String?    @map("embedding_model")
+  embeddingAt      DateTime?  @map("embedding_at") @db.Timestamptz
+  topicClusterId   String?    @map("topic_cluster_id")
 
   @@unique([source, externalId])
   @@index([publishedAt])

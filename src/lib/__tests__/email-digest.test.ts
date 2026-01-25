@@ -86,6 +86,9 @@ function createMockEvents(): GroupedEvents {
     venueType: null,
     weatherScore: null,
     isWeatherSafe: null,
+    embeddingModel: null,
+    embeddingAt: null,
+    topicClusterId: null,
     source: mockSource,
   };
 

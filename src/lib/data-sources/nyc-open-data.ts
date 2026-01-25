@@ -528,6 +528,10 @@ export function prepareForDatabase(
     venueType: null,
     weatherScore: null,
     isWeatherSafe: null,
+    // Embedding fields - will be populated by embed-content job
+    embeddingModel: null,
+    embeddingAt: null,
+    topicClusterId: null,
   }));
 }
 

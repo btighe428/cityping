@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/jobs/embed-content",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/jobs/preflight-check",
       "schedule": "30 11 * * *"
     },
