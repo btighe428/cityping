@@ -182,7 +182,7 @@ interface LLMResult {
 }
 
 // LLM call timeout and retry configuration
-const LLM_TIMEOUT_MS = 30000; // 30 second timeout (clustering is more complex)
+const LLM_TIMEOUT_MS = 90000; // 90 second timeout (120 articles needs more time)
 const LLM_MAX_RETRIES = 2;
 
 /**
