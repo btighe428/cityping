@@ -80,7 +80,7 @@ export async function clusterArticles(
 ): Promise<ClusteringResult> {
   const targetClusters = options?.targetClusters || 4;
   const minClusterSize = options?.minClusterSize || 2;
-  const maxArticles = options?.maxArticles || 30;
+  const maxArticles = options?.maxArticles || 120;
   const errors: string[] = [];
 
   // Validate input
@@ -216,7 +216,7 @@ Output valid JSON only. No markdown code blocks, no explanation.`,
             },
           ],
           temperature: 0.3,
-          max_tokens: 2000,
+          max_tokens: 8000,
           response_format: { type: "json_object" },
         },
         { timeout: LLM_TIMEOUT_MS }

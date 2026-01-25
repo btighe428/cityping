@@ -199,8 +199,8 @@ export async function generateDailyDigest(
   const isWeekend = dayOfWeek >= 6;
   const errors: string[] = [];
 
-  // Adapt depth based on day of week
-  const targetClusters = isWeekend ? 5 : 3;
+  // Adapt depth based on day of week (4x expanded)
+  const targetClusters = isWeekend ? 20 : 12;
   const agendaWindowDays = getAgendaWindow(dayOfWeek);
 
   let totalTokens = 0;
@@ -289,9 +289,9 @@ export async function generateDailyDigest(
   try {
     contentResult = await selectBestContentV2Semantic({
       semanticEnabled: true,
-      maxNews: 30,
-      maxAlerts: 20,
-      minQualityScore: 40,
+      maxNews: 120,
+      maxAlerts: 80,
+      minQualityScore: 30,
     });
     stages.quality.itemsSelected = contentResult.news.length + contentResult.alerts.length;
     stages.quality.success = true;
@@ -362,7 +362,7 @@ export async function generateDailyDigest(
       curation = await curateContentV2(contentResult as ContentSelectionV2, {
         enabled: true,
         generateWhyCare: true,
-        maxTotal: 15,
+        maxTotal: 60,
       });
       stages.curation.duplicatesRemoved = curation.stats.duplicatesRemoved;
       stages.curation.success = true;
@@ -425,7 +425,7 @@ export async function generateDailyDigest(
       const horizonResult = await generateHorizonAlerts({
         today,
         includePremium: true,
-        maxAlerts: 5,
+        maxAlerts: 20,
       });
 
       totalTokens += horizonResult.tokensUsed;
@@ -451,7 +451,7 @@ export async function generateDailyDigest(
   // =========================================================================
   // BUILD BRIEFING ITEMS
   // =========================================================================
-  const briefingItems = buildBriefingItems(alerts, unclustered, curation, 8);
+  const briefingItems = buildBriefingItems(alerts, unclustered, curation, 32);
 
   // =========================================================================
   // BUILD AGENDA
@@ -466,7 +466,7 @@ export async function generateDailyDigest(
         status: "published",
       },
       orderBy: { startsAt: "asc" },
-      take: 8,
+      take: 32,
     });
 
     agendaEvents = events.map((e) => ({
@@ -571,8 +571,8 @@ function buildBriefingItems(
 ): BriefingItem[] {
   const items: BriefingItem[] = [];
 
-  // Add top alerts with "why you should care" from curation
-  for (const alert of alerts.slice(0, 5)) {
+  // Add top alerts with "why you should care" from curation (4x expanded)
+  for (const alert of alerts.slice(0, 20)) {
     const curatedItem = curation?.curatedContent.find((c) => c.item.id === alert.id);
     items.push({
       id: alert.id,
@@ -585,8 +585,8 @@ function buildBriefingItems(
     });
   }
 
-  // Add unclustered news
-  for (const article of unclustered.slice(0, 3)) {
+  // Add unclustered news (4x expanded)
+  for (const article of unclustered.slice(0, 12)) {
     const curatedItem = curation?.curatedContent.find((c) => c.item.id === article.id);
     items.push({
       id: article.id,
