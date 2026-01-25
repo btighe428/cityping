@@ -109,6 +109,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       viable,
+      weather: digest.weather ? {
+        emoji: digest.weather.emoji,
+        summary: digest.weather.summary,
+        high: digest.weather.high,
+        low: digest.weather.low,
+        condition: digest.weather.condition,
+      } : null,
+      subjectLine: digest.subjectLine ? {
+        full: digest.subjectLine.full,
+        preheader: digest.subjectLine.preheader,
+      } : null,
       summary: {
         horizon: {
           free: digest.horizon.alerts.length,
@@ -159,6 +170,7 @@ export async function GET(request: NextRequest) {
         processingTimeMs: digest.meta.processingTimeMs,
         totalTimeMs: elapsedMs,
         errors: digest.meta.errors,
+        stages: digest.meta.stages,
       },
     });
   } catch (error) {

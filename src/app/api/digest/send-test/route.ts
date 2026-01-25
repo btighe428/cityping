@@ -55,6 +55,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       attempts: result.attempts,
       verified: result.verified,
       summary: {
+        weather: digest.weather ? `${digest.weather.emoji} ${digest.weather.summary}` : null,
+        subjectLine: digest.subjectLine?.full || null,
         horizon: digest.horizon.alerts.length,
         deepDive: digest.deepDive.clusters.length,
         briefing: digest.briefing.items.length,
@@ -62,6 +64,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         tokensUsed: digest.meta.tokensUsed,
         processingTimeMs: digest.meta.processingTimeMs,
         errors: digest.meta.errors,
+        stages: digest.meta.stages,
       },
     });
   } catch (error) {
