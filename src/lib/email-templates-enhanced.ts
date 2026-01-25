@@ -544,7 +544,23 @@ export function buildEnhancedDigestHtml(
           <div style="font-size: 14px; color: ${COLORS.muted};">
             ${dateStr}
           </div>
-        </div>
+          ${digest.weather ? `
+            <div style="
+              margin-top: 12px;
+              padding: 10px 16px;
+              background: #f0f9ff;
+              border-radius: 8px;
+              display: inline-block;
+            ">
+              <span style="font-size: 24px;">${digest.weather.emoji}</span>
+              <span style="font-size: 18px; font-weight: 600; color: #0369a1; margin-left: 8px;">
+                ${digest.weather.high}°/${digest.weather.low}°
+              </span>
+              <span style="font-size: 14px; color: #64748b; margin-left: 8px;">
+                ${escapeHtml(digest.weather.condition)}
+              </span>
+            </div>
+          ` : ""}</div>
 
         <!-- Main Content -->
         ${horizonSection}
@@ -598,6 +614,12 @@ export function buildEnhancedDigestText(
   lines.push(`CITYPING DAILY - ${dateStr}`);
   lines.push("=".repeat(50));
   lines.push("");
+
+  // Weather
+  if (digest.weather) {
+    lines.push(`${digest.weather.emoji} ${digest.weather.high}°/${digest.weather.low}° ${digest.weather.condition}`);
+    lines.push("");
+  }
 
   // Horizon
   if (digest.horizon.alerts.length > 0) {

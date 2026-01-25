@@ -17,6 +17,7 @@
 
 import { DateTime } from "luxon";
 import { prisma } from "../db";
+import { fetchNYCWeatherForecast } from "../weather";
 import {
   generateHorizonAlerts,
   HorizonAlert,
@@ -33,6 +34,10 @@ import {
   selectBestContentV2Semantic,
   ContentSelectionV2Semantic,
 } from "./data-quality-agent";
+import {
+  generateNanoAppSubject,
+  type NanoAppSubject,
+} from "./subject-line-nano-app";
 import type { ScoredNewsArticle, ScoredAlertEvent } from "./types";
 
 // =============================================================================
@@ -40,9 +45,27 @@ import type { ScoredNewsArticle, ScoredAlertEvent } from "./types";
 // =============================================================================
 
 /**
+ * Weather data for the digest.
+ */
+export interface WeatherData {
+  temp: number;
+  high: number;
+  low: number;
+  condition: string;
+  emoji: string;
+  summary: string;
+}
+
+/**
  * Complete content for the enhanced daily digest email.
  */
 export interface DailyDigestContent {
+  // WEATHER - Current NYC conditions
+  weather: WeatherData | null;
+
+  // SUBJECT LINE - Generated via nano app
+  subjectLine: NanoAppSubject | null;
+
   // THE HORIZON - Proactive alerts from knowledge base
   horizon: {
     alerts: HorizonAlert[];
@@ -139,6 +162,47 @@ export async function generateDailyDigest(
   const agendaWindowDays = getAgendaWindow(dayOfWeek);
 
   let totalTokens = 0;
+
+  // -------------------------------------------------------------------------
+  // 0. WEATHER - Fetch NYC conditions
+  // -------------------------------------------------------------------------
+  let weather: WeatherData | null = null;
+  try {
+    const forecast = await fetchNYCWeatherForecast();
+    if (forecast && forecast.days && forecast.days.length >= 2) {
+      // NWS returns day/night pairs; first is current period, second is next
+      const dayPeriod = forecast.days.find((d) => !d.name.toLowerCase().includes("night"));
+      const nightPeriod = forecast.days.find((d) => d.name.toLowerCase().includes("night"));
+
+      const high = dayPeriod?.temperature || forecast.days[0].temperature;
+      const low = nightPeriod?.temperature || high - 10; // Estimate if missing
+      const condition = dayPeriod?.shortForecast || forecast.days[0].shortForecast;
+
+      weather = {
+        temp: high,
+        high,
+        low,
+        condition,
+        emoji: getWeatherEmoji(condition),
+        summary: `${high}°/${low}° ${condition}`,
+      };
+    } else if (forecast && forecast.days && forecast.days.length > 0) {
+      // Fallback: just use first period
+      const period = forecast.days[0];
+      weather = {
+        temp: period.temperature,
+        high: period.temperature,
+        low: period.temperature - 10,
+        condition: period.shortForecast,
+        emoji: getWeatherEmoji(period.shortForecast),
+        summary: `${period.temperature}° ${period.shortForecast}`,
+      };
+    }
+  } catch (error) {
+    errors.push(
+      `Weather fetch failed: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  }
 
   // -------------------------------------------------------------------------
   // 1. THE HORIZON - Proactive alerts from knowledge base
@@ -275,6 +339,43 @@ export async function generateDailyDigest(
   }
 
   // -------------------------------------------------------------------------
+  // 6. SUBJECT LINE - Generate via nano app
+  // -------------------------------------------------------------------------
+  let subjectLine: NanoAppSubject | null = null;
+  try {
+    // Build content selection format for subject line generator
+    const contentForSubject = {
+      news: news.map((n) => ({
+        id: n.id,
+        title: n.title,
+        summary: n.summary || n.snippet || "",
+        source: n.source || "Unknown",
+        url: n.url || "",
+        publishedAt: n.publishedAt,
+        scores: n.scores,
+      })),
+      alerts: alerts.map((a) => ({
+        id: a.id,
+        title: a.title,
+        body: a.body || "",
+        sourceId: a.sourceId,
+      })),
+      parks: [],
+      dining: [],
+    };
+
+    subjectLine = await generateNanoAppSubject(contentForSubject as any, {
+      temp: weather?.temp || 40,
+      condition: weather?.condition || "cloudy",
+      emoji: weather?.emoji || "☁️",
+    });
+  } catch (error) {
+    errors.push(
+      `Subject line generation failed: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  }
+
+  // -------------------------------------------------------------------------
   // Calculate metadata
   // -------------------------------------------------------------------------
   const processingTimeMs = Date.now() - startTime;
@@ -284,6 +385,8 @@ export async function generateDailyDigest(
   const estimatedCost = (totalTokens / 1_000_000) * 5;
 
   return {
+    weather,
+    subjectLine,
     horizon: {
       alerts: horizonAlerts,
       premiumAlerts,
@@ -400,14 +503,32 @@ function getCategoryIcon(moduleId?: string): string {
 }
 
 /**
+ * Get weather emoji from condition string.
+ */
+function getWeatherEmoji(condition: string): string {
+  const lower = condition.toLowerCase();
+  if (lower.includes("sun") || lower.includes("clear")) return "☀️";
+  if (lower.includes("partly")) return "⛅";
+  if (lower.includes("cloud") || lower.includes("overcast")) return "☁️";
+  if (lower.includes("rain") || lower.includes("drizzle")) return "🌧️";
+  if (lower.includes("snow")) return "🌨️";
+  if (lower.includes("thunder") || lower.includes("storm")) return "⛈️";
+  if (lower.includes("fog") || lower.includes("mist")) return "🌫️";
+  if (lower.includes("wind")) return "💨";
+  return "🌤️";
+}
+
+/**
  * Get a summary of the digest for logging.
  */
 export function summarizeDigest(digest: DailyDigestContent): string {
-  const { horizon, deepDive, briefing, agenda, meta } = digest;
+  const { weather, subjectLine, horizon, deepDive, briefing, agenda, meta } = digest;
 
   return [
     `Daily Digest Summary (${meta.dayOfWeek})`,
     `----------------------------------------`,
+    weather ? `Weather: ${weather.emoji} ${weather.summary}` : "Weather: N/A",
+    subjectLine ? `Subject: ${subjectLine.full.slice(0, 60)}...` : "Subject: N/A",
     `Horizon: ${horizon.alerts.length} free, ${horizon.premiumAlerts.length} premium`,
     `Deep Dive: ${deepDive.clusters.length} clusters`,
     `Briefing: ${briefing.items.length} items`,
