@@ -293,12 +293,22 @@ For each cluster, provide:
 - representative_id: The single best article to feature (most comprehensive or well-written)
 - significance: 1-10 score of importance to NYC residents (10 = affects everyone immediately)
 
-Rules:
+STRICT RULES:
 - Each article can only belong to one cluster
 - Clusters must have at least 2 articles
 - Leave truly unrelated articles unclustered (don't force weak connections)
 - Prioritize clusters that affect many NYC residents
 - The summary should synthesize information across articles, not just repeat headlines
+
+CATEGORY SEPARATION (CRITICAL - DO NOT MIX):
+- SPORTS (teams, games, players, coaches) must NEVER be grouped with non-sports news
+- HEALTH/SAFETY (medical, emergencies, public health) must stay separate from entertainment
+- POLITICS/CIVIC must stay separate from celebrity/entertainment news
+- CRIME/SAFETY must stay separate from sports and entertainment
+- WEATHER must stay separate from unrelated topics
+- If an article doesn't clearly fit a cluster's theme, leave it unclustered
+
+Ask yourself: "Would a reader be confused why this article is in this cluster?" If yes, don't include it.
 
 Respond with JSON: { "clusters": [...] }`;
 }
