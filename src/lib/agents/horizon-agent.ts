@@ -171,13 +171,15 @@ async function generateMessagesWithLLM(
               role: "system",
               content: `You are a helpful NYC assistant writing brief, actionable alerts for a daily email digest.
 
+CRITICAL: Use the EXACT timing provided (TODAY, TOMORROW, or "in X days"). Do NOT say "today" if the event is tomorrow.
+
 Style guidelines:
 - Write in a friendly but concise style
 - Each message should be 1-2 sentences max
 - Focus on the action the reader should take or the impact on their day
 - Use the provided template as a starting point but make it sound natural
 - Include urgency cues for time-sensitive items ("Don't forget...", "Last day to...")
-- Be specific about dates and times when relevant`,
+- ALWAYS match the exact day provided: TODAY means today, TOMORROW means tomorrow`,
             },
             {
               role: "user",
