@@ -182,14 +182,147 @@ interface LLMResult {
 }
 
 // LLM call timeout and retry configuration
-const LLM_TIMEOUT_MS = 90000; // 90 second timeout (120 articles needs more time)
+const LLM_TIMEOUT_MS = 60000; // 60 second timeout per chunk
 const LLM_MAX_RETRIES = 2;
+const CHUNK_SIZE = 40; // Optimal batch size for GPT-4o (processes in ~30-40s)
 
 /**
- * Call GPT-4o to cluster articles.
- * Includes timeout and retry logic for production robustness.
+ * Call GPT-4o to cluster articles using chunked parallel processing.
+ * For large article sets (>40), splits into chunks, clusters in parallel,
+ * then merges similar clusters from different chunks.
  */
 async function clusterWithLLM(
+  articles: ClusterableArticle[],
+  targetClusters: number
+): Promise<LLMResult> {
+  // For small sets, use single call
+  if (articles.length <= CHUNK_SIZE) {
+    console.log(`[ClusteringAgent] Single-call mode: ${articles.length} articles`);
+    return clusterChunk(articles, targetClusters);
+  }
+
+  // Split into chunks for parallel processing
+  const chunks = splitIntoChunks(articles, CHUNK_SIZE);
+  const clustersPerChunk = Math.max(3, Math.ceil(targetClusters / chunks.length));
+
+  console.log(`[ClusteringAgent] Chunked mode: ${articles.length} articles → ${chunks.length} chunks of ~${CHUNK_SIZE}`);
+  console.log(`[ClusteringAgent] Target ${clustersPerChunk} clusters per chunk`);
+
+  // Process all chunks in parallel
+  const chunkPromises = chunks.map((chunk, i) => {
+    console.log(`[ClusteringAgent] Processing chunk ${i + 1}/${chunks.length} (${chunk.length} articles)`);
+    return clusterChunk(chunk, clustersPerChunk).catch((error) => {
+      console.warn(`[ClusteringAgent] Chunk ${i + 1} failed: ${error.message}`);
+      return { response: { clusters: [] }, tokensUsed: 0 } as LLMResult;
+    });
+  });
+
+  const chunkResults = await Promise.all(chunkPromises);
+
+  // Merge results from all chunks
+  const mergedClusters = mergeClusterResults(chunkResults);
+  const totalTokens = chunkResults.reduce((sum, r) => sum + r.tokensUsed, 0);
+
+  console.log(`[ClusteringAgent] Merged ${mergedClusters.length} clusters from ${chunks.length} chunks`);
+
+  return {
+    response: { clusters: mergedClusters },
+    tokensUsed: totalTokens,
+  };
+}
+
+/**
+ * Split articles into chunks of specified size.
+ */
+function splitIntoChunks(articles: ClusterableArticle[], chunkSize: number): ClusterableArticle[][] {
+  const chunks: ClusterableArticle[][] = [];
+  for (let i = 0; i < articles.length; i += chunkSize) {
+    chunks.push(articles.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
+/**
+ * Merge cluster results from multiple chunks.
+ * Combines clusters with similar themes (matching category keywords).
+ */
+function mergeClusterResults(results: LLMResult[]): LLMClusterResponse["clusters"] {
+  const allClusters = results.flatMap((r) => r.response.clusters || []);
+
+  if (allClusters.length === 0) return [];
+
+  // Group clusters by normalized theme category
+  const themeGroups = new Map<string, LLMClusterResponse["clusters"]>();
+
+  for (const cluster of allClusters) {
+    const normalizedTheme = normalizeTheme(cluster.theme);
+    const existing = themeGroups.get(normalizedTheme) || [];
+    existing.push(cluster);
+    themeGroups.set(normalizedTheme, existing);
+  }
+
+  // Merge clusters within each theme group
+  const merged: LLMClusterResponse["clusters"] = [];
+
+  for (const [theme, clusters] of themeGroups) {
+    if (clusters.length === 1) {
+      merged.push(clusters[0]);
+    } else {
+      // Merge multiple clusters with same theme
+      const mergedCluster = {
+        theme: clusters[0].theme, // Keep first theme name
+        headline: clusters[0].headline, // Keep best headline (first has highest-scored articles)
+        summary: clusters[0].summary, // Keep first summary
+        article_ids: [...new Set(clusters.flatMap((c) => c.article_ids))], // Combine unique IDs
+        representative_id: clusters[0].representative_id, // Keep first representative
+        significance: Math.max(...clusters.map((c) => c.significance)), // Take highest significance
+      };
+      merged.push(mergedCluster);
+      console.log(`[ClusteringAgent] Merged ${clusters.length} "${theme}" clusters → ${mergedCluster.article_ids.length} articles`);
+    }
+  }
+
+  // Sort by significance
+  merged.sort((a, b) => b.significance - a.significance);
+
+  return merged;
+}
+
+/**
+ * Normalize theme to a category for grouping similar clusters.
+ * E.g., "MTA Subway Delays" and "Transit Disruptions" → "transit"
+ */
+function normalizeTheme(theme: string): string {
+  const lower = theme.toLowerCase();
+
+  // Category mappings - order matters (more specific first)
+  const categories: Array<[string[], string]> = [
+    [["subway", "mta", "metro", "train", "transit", "bus", "commut"], "transit"],
+    [["yankee", "met", "knick", "net", "ranger", "giant", "jet", "liberty", "nycfc", "red bull", "sports", "game", "player", "coach", "team"], "sports"],
+    [["mayor", "council", "budget", "elect", "vote", "politic", "govern", "city hall", "civic"], "politics"],
+    [["crime", "police", "nypd", "arrest", "shoot", "murder", "robbery", "safety"], "crime"],
+    [["health", "hospital", "medical", "covid", "flu", "disease", "emergency"], "health"],
+    [["housing", "rent", "apartment", "evict", "tenant", "landlord", "real estate"], "housing"],
+    [["school", "student", "teacher", "education", "doe", "university", "college"], "education"],
+    [["weather", "storm", "snow", "rain", "heat", "cold", "hurricane"], "weather"],
+    [["broadway", "museum", "concert", "festival", "art", "theater", "entertainment", "show"], "entertainment"],
+    [["restaurant", "food", "dining", "bar", "chef", "eat"], "dining"],
+    [["business", "company", "startup", "economy", "job", "employ", "wall street"], "business"],
+  ];
+
+  for (const [keywords, category] of categories) {
+    if (keywords.some((k) => lower.includes(k))) {
+      return category;
+    }
+  }
+
+  return "general"; // Default category
+}
+
+/**
+ * Cluster a single chunk of articles with GPT-4o.
+ */
+async function clusterChunk(
   articles: ClusterableArticle[],
   targetClusters: number
 ): Promise<LLMResult> {
@@ -216,7 +349,7 @@ Output valid JSON only. No markdown code blocks, no explanation.`,
             },
           ],
           temperature: 0.3,
-          max_tokens: 8000,
+          max_tokens: 4000, // Reduced since we're processing smaller chunks
           response_format: { type: "json_object" },
         },
         { timeout: LLM_TIMEOUT_MS }

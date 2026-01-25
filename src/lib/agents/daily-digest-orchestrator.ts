@@ -609,11 +609,20 @@ function buildBriefingItems(
 ): BriefingItem[] {
   const items: BriefingItem[] = [];
 
-  // Separate transit alerts from other alerts
-  const transitAlerts = alerts.filter(a =>
-    a.category === "transit" || a.category === "breaking" ||
-    a.title?.includes("[") || a.body?.includes("train")
-  );
+  // Separate transit alerts from other alerts using content-based detection
+  // Transit alerts typically have subway line indicators like [A], [1], etc. in title
+  // or mention "train", "subway", "MTA", "delay" in their content
+  const transitAlerts = alerts.filter(a => {
+    const text = `${a.title || ""} ${a.body || ""}`.toLowerCase();
+    return (
+      a.title?.includes("[") || // Subway line indicator like [A], [1]
+      text.includes("train") ||
+      text.includes("subway") ||
+      text.includes("mta") ||
+      text.includes("delay") ||
+      text.includes("service change")
+    );
+  });
   const otherAlerts = alerts.filter(a => !transitAlerts.includes(a));
 
   // Sort transit alerts by ridership impact (highest first)
@@ -634,7 +643,7 @@ function buildBriefingItems(
       title: alert.title,
       body: alert.body || "",
       source: "CityPing",
-      category: alert.category || "transit",
+      category: alert.category || "breaking",
       icon: "🚇",
       whyYouShouldCare: curatedItem?.whyYouShouldCare,
     });
