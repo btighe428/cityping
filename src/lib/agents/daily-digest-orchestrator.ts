@@ -563,6 +563,44 @@ function getCategoryIcon(moduleId?: string): string {
   return icons[moduleId || "alert"] || "📌";
 }
 
+// Daily ridership estimates by line (source: MTA 2023 data, in thousands)
+const SUBWAY_RIDERSHIP: Record<string, number> = {
+  "1": 450, "2": 400, "3": 350,
+  "4": 500, "5": 450, "6": 550,  // Lex line = highest
+  "7": 400,
+  "A": 500, "C": 300, "E": 400,
+  "B": 250, "D": 350, "F": 400, "M": 200,
+  "G": 150,
+  "J": 200, "Z": 50,
+  "L": 350,
+  "N": 300, "Q": 350, "R": 350, "W": 200,
+  "S": 100, "SIR": 25,  // Staten Island = lowest
+};
+
+/**
+ * Extract subway lines mentioned in alert title/body and calculate ridership impact.
+ */
+function getTransitRidershipScore(title: string, body: string): number {
+  const text = `${title} ${body}`.toUpperCase();
+  let totalRidership = 0;
+
+  // Match [X] pattern for subway lines
+  const lineMatches = text.match(/\[([A-Z0-9]+)\]/g) || [];
+  for (const match of lineMatches) {
+    const line = match.replace(/[\[\]]/g, "");
+    totalRidership += SUBWAY_RIDERSHIP[line] || 0;
+  }
+
+  // Also check for written-out lines
+  for (const [line, ridership] of Object.entries(SUBWAY_RIDERSHIP)) {
+    if (line === "SIR" && text.includes("SIR")) {
+      totalRidership += ridership;
+    }
+  }
+
+  return totalRidership;
+}
+
 function buildBriefingItems(
   alerts: ScoredAlertEvent[],
   unclustered: ClusterableArticle[],
@@ -571,8 +609,39 @@ function buildBriefingItems(
 ): BriefingItem[] {
   const items: BriefingItem[] = [];
 
-  // Add top alerts with "why you should care" from curation (4x expanded)
-  for (const alert of alerts.slice(0, 20)) {
+  // Separate transit alerts from other alerts
+  const transitAlerts = alerts.filter(a =>
+    a.category === "transit" || a.category === "breaking" ||
+    a.title?.includes("[") || a.body?.includes("train")
+  );
+  const otherAlerts = alerts.filter(a => !transitAlerts.includes(a));
+
+  // Sort transit alerts by ridership impact (highest first)
+  const sortedTransitAlerts = transitAlerts
+    .map(alert => ({
+      alert,
+      ridership: getTransitRidershipScore(alert.title || "", alert.body || ""),
+    }))
+    .sort((a, b) => b.ridership - a.ridership)
+    .slice(0, 8)  // Cap at 8 highest-impact transit alerts
+    .map(({ alert }) => alert);
+
+  // Add high-ridership transit alerts first
+  for (const alert of sortedTransitAlerts) {
+    const curatedItem = curation?.curatedContent.find((c) => c.item.id === alert.id);
+    items.push({
+      id: alert.id,
+      title: alert.title,
+      body: alert.body || "",
+      source: "CityPing",
+      category: alert.category || "transit",
+      icon: "🚇",
+      whyYouShouldCare: curatedItem?.whyYouShouldCare,
+    });
+  }
+
+  // Add other (non-transit) alerts
+  for (const alert of otherAlerts.slice(0, 8)) {
     const curatedItem = curation?.curatedContent.find((c) => c.item.id === alert.id);
     items.push({
       id: alert.id,
@@ -585,7 +654,7 @@ function buildBriefingItems(
     });
   }
 
-  // Add unclustered news (4x expanded)
+  // Add unclustered news
   for (const article of unclustered.slice(0, 12)) {
     const curatedItem = curation?.curatedContent.find((c) => c.item.id === article.id);
     items.push({
