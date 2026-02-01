@@ -3,9 +3,9 @@
  * Test suite for the signup API endpoint.
  *
  * The signup endpoint handles new user registration with intelligent
- * preference inference based on NYC zip codes. This test suite validates:
+ * preference inference based on NYC boroughs. This test suite validates:
  *
- * 1. Input validation (email, zip code format, optional phone)
+ * 1. Input validation (email, borough, optional zipCode, optional phone)
  * 2. Duplicate user detection (by email or phone)
  * 3. Successful user creation with inferred preferences
  * 4. Proper HTTP status codes and response structures
@@ -33,6 +33,11 @@ jest.mock("../../../src/lib/inference", () => ({
   createUserWithInferredPreferences: jest.fn(),
 }));
 
+// Mock email sending
+jest.mock("../../../src/lib/resend", () => ({
+  sendEmail: jest.fn().mockResolvedValue({ id: "mock-email-id" }),
+}));
+
 import { POST } from "../../../src/app/api/auth/signup/route";
 import { prisma } from "../../../src/lib/db";
 import { createUserWithInferredPreferences } from "../../../src/lib/inference";
@@ -55,7 +60,7 @@ describe("POST /api/auth/signup", () => {
     it("should return 400 for missing email", async () => {
       const req = new NextRequest("http://localhost:3000/api/auth/signup", {
         method: "POST",
-        body: JSON.stringify({ zipCode: "10001" }),
+        body: JSON.stringify({ borough: "manhattan" }),
       });
 
       const response = await POST(req);
@@ -71,7 +76,7 @@ describe("POST /api/auth/signup", () => {
         method: "POST",
         body: JSON.stringify({
           email: "not-an-email",
-          zipCode: "10001",
+          borough: "manhattan",
         }),
       });
 
@@ -82,10 +87,26 @@ describe("POST /api/auth/signup", () => {
       expect(body.error).toBe("Invalid input");
     });
 
-    it("should return 400 for missing zipCode", async () => {
+    it("should return 400 for missing borough", async () => {
       const req = new NextRequest("http://localhost:3000/api/auth/signup", {
         method: "POST",
         body: JSON.stringify({ email: "user@example.com" }),
+      });
+
+      const response = await POST(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.error).toBe("Invalid input");
+    });
+
+    it("should return 400 for invalid borough", async () => {
+      const req = new NextRequest("http://localhost:3000/api/auth/signup", {
+        method: "POST",
+        body: JSON.stringify({
+          email: "user@example.com",
+          borough: "hoboken", // Not a valid NYC borough
+        }),
       });
 
       const response = await POST(req);
@@ -100,6 +121,7 @@ describe("POST /api/auth/signup", () => {
         method: "POST",
         body: JSON.stringify({
           email: "user@example.com",
+          borough: "manhattan",
           zipCode: "1234", // 4 digits
         }),
       });
@@ -116,6 +138,7 @@ describe("POST /api/auth/signup", () => {
         method: "POST",
         body: JSON.stringify({
           email: "user@example.com",
+          borough: "manhattan",
           zipCode: "1000a",
         }),
       });
@@ -140,8 +163,31 @@ describe("POST /api/auth/signup", () => {
         method: "POST",
         body: JSON.stringify({
           email: "user@example.com",
+          borough: "manhattan",
           zipCode: "10001",
           phone: "+12125551234",
+        }),
+      });
+
+      const response = await POST(req);
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should accept valid input without zipCode (optional)", async () => {
+      mockPrismaUserFindFirst.mockResolvedValue(null);
+      mockCreateUserWithInferredPreferences.mockResolvedValue({
+        id: "user-123",
+        email: "user@example.com",
+        tier: "free",
+        inferredNeighborhood: "Manhattan",
+      });
+
+      const req = new NextRequest("http://localhost:3000/api/auth/signup", {
+        method: "POST",
+        body: JSON.stringify({
+          email: "user@example.com",
+          borough: "manhattan",
         }),
       });
 
@@ -155,39 +201,44 @@ describe("POST /api/auth/signup", () => {
   // DUPLICATE USER DETECTION TESTS
   // =========================================================================
 
-  describe("Duplicate User Detection", () => {
-    it("should return 409 when user with email already exists", async () => {
+  describe("Existing User Login", () => {
+    it("should return 200 and welcome back message when user with email already exists", async () => {
       mockPrismaUserFindFirst.mockResolvedValue({
         id: "existing-user",
         email: "existing@example.com",
+        tier: "free",
+        inferredNeighborhood: "Chelsea",
       });
 
       const req = new NextRequest("http://localhost:3000/api/auth/signup", {
         method: "POST",
         body: JSON.stringify({
           email: "existing@example.com",
-          zipCode: "10001",
+          borough: "manhattan",
         }),
       });
 
       const response = await POST(req);
       const body = await response.json();
 
-      expect(response.status).toBe(409);
-      expect(body.error).toBe("User already exists");
+      expect(response.status).toBe(200);
+      expect(body.message).toBe("Welcome back!");
     });
 
-    it("should return 409 when user with phone already exists", async () => {
+    it("should return 200 and welcome back message when user with phone already exists", async () => {
       mockPrismaUserFindFirst.mockResolvedValue({
         id: "existing-user",
+        email: "existing@example.com",
         phone: "+12125551234",
+        tier: "free",
+        inferredNeighborhood: "Chelsea",
       });
 
       const req = new NextRequest("http://localhost:3000/api/auth/signup", {
         method: "POST",
         body: JSON.stringify({
           email: "new@example.com",
-          zipCode: "10001",
+          borough: "manhattan",
           phone: "+12125551234",
         }),
       });
@@ -195,8 +246,8 @@ describe("POST /api/auth/signup", () => {
       const response = await POST(req);
       const body = await response.json();
 
-      expect(response.status).toBe(409);
-      expect(body.error).toBe("User already exists");
+      expect(response.status).toBe(200);
+      expect(body.message).toBe("Welcome back!");
     });
 
     it("should check for existing user with correct OR query", async () => {
@@ -212,7 +263,7 @@ describe("POST /api/auth/signup", () => {
         method: "POST",
         body: JSON.stringify({
           email: "user@example.com",
-          zipCode: "10001",
+          borough: "manhattan",
           phone: "+12125551234",
         }),
       });
@@ -239,7 +290,7 @@ describe("POST /api/auth/signup", () => {
         method: "POST",
         body: JSON.stringify({
           email: "user@example.com",
-          zipCode: "10001",
+          borough: "manhattan",
         }),
       });
 
@@ -271,6 +322,7 @@ describe("POST /api/auth/signup", () => {
         method: "POST",
         body: JSON.stringify({
           email: "user@example.com",
+          borough: "manhattan",
           zipCode: "10001",
         }),
       });
@@ -284,9 +336,7 @@ describe("POST /api/auth/signup", () => {
       expect(body.user.email).toBe("user@example.com");
       expect(body.user.tier).toBe("free");
       expect(body.user.inferredNeighborhood).toBe("Chelsea");
-      expect(body.message).toBe(
-        "Account created. Check your email for confirmation."
-      );
+      expect(body.message).toBe("Account created successfully!");
     });
 
     it("should call createUserWithInferredPreferences with correct arguments", async () => {
@@ -302,6 +352,7 @@ describe("POST /api/auth/signup", () => {
         method: "POST",
         body: JSON.stringify({
           email: "user@example.com",
+          borough: "manhattan",
           zipCode: "10001",
           phone: "+12125551234",
         }),
@@ -311,11 +362,10 @@ describe("POST /api/auth/signup", () => {
 
       expect(mockCreateUserWithInferredPreferences).toHaveBeenCalledWith(
         prisma,
-        {
+        expect.objectContaining({
           email: "user@example.com",
-          zipCode: "10001",
-          phone: "+12125551234",
-        }
+          borough: "manhattan",
+        })
       );
     });
 
@@ -332,7 +382,7 @@ describe("POST /api/auth/signup", () => {
         method: "POST",
         body: JSON.stringify({
           email: "nophone@example.com",
-          zipCode: "11211",
+          borough: "brooklyn",
         }),
       });
 
@@ -357,7 +407,7 @@ describe("POST /api/auth/signup", () => {
         method: "POST",
         body: JSON.stringify({
           email: "user@example.com",
-          zipCode: "10001",
+          borough: "manhattan",
         }),
       });
 
@@ -378,7 +428,7 @@ describe("POST /api/auth/signup", () => {
         method: "POST",
         body: JSON.stringify({
           email: "user@example.com",
-          zipCode: "10001",
+          borough: "manhattan",
         }),
       });
 

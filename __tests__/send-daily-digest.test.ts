@@ -23,6 +23,21 @@ jest.mock("../src/lib/db", () => ({
       findFirst: jest.fn(),
       create: jest.fn(),
     },
+    jobLock: {
+      create: jest.fn().mockResolvedValue({ id: 'mock-lock' }),
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    emailOutbox: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({ id: 'mock-outbox' }),
+      update: jest.fn().mockResolvedValue({}),
+    },
+    jobRun: {
+      create: jest.fn().mockResolvedValue({ id: 'mock-job-run' }),
+      update: jest.fn().mockResolvedValue({}),
+      findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+    },
   },
 }));
 

@@ -45,6 +45,19 @@ jest.mock("@/lib/twilio", () => ({
   sendSms: (...args: unknown[]) => mockSendSms(...args),
 }));
 
+// Mock delivery-config to bypass quiet hours check
+jest.mock("@/lib/delivery-config", () => ({
+  BATCHING_CONFIG: {
+    NOTIFICATION_BATCH_SIZE: 100,
+  },
+  isQuietHours: jest.fn().mockReturnValue(false),
+}));
+
+// Mock frequency cap to allow all notifications
+jest.mock("@/lib/frequency-cap", () => ({
+  checkSmsFrequencyCap: jest.fn().mockResolvedValue({ allowed: true }),
+}));
+
 describe("SMS Notification Delivery Job", () => {
   beforeEach(() => {
     jest.clearAllMocks();

@@ -350,7 +350,8 @@ export async function batchNotifications(
   
   // For remaining events, create batched entries with same scheduled time
   const remaining = eventIds.slice(1)
-  if (remaining.length > 0 && decision.shouldSend && decision.scheduledFor) {
+  const scheduledFor = decision.scheduledFor
+  if (remaining.length > 0 && decision.shouldSend && scheduledFor) {
     await Promise.all(
       remaining.map(eventId =>
         prisma.notificationOutbox.create({
@@ -358,7 +359,7 @@ export async function batchNotifications(
             userId,
             eventId,
             channel: decision.channel as 'email' | 'sms',
-            scheduledFor: decision.scheduledFor,
+            scheduledFor,
             status: 'pending',
           },
         }).catch(() => {

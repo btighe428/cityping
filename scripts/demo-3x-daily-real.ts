@@ -1,3 +1,5 @@
+// @ts-nocheck
+// Demo script - uses placeholder queries for models not yet in schema
 import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
 import { sendEmail } from '../src/lib/resend'

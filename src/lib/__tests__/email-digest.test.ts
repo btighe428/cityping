@@ -306,7 +306,7 @@ describe("email-digest", () => {
       const html = buildDigestHtml(events, undefined, "user-123", {}, "NYC-TEST1");
 
       // Core digest elements should still be present
-      expect(html).toContain("Your NYC Alerts");
+      expect(html).toContain("NYC TODAY");
       expect(html).toContain("ASP Suspended Tomorrow");
       expect(html).toContain("Upgrade for $7/mo");
       expect(html).toContain("Manage preferences");
@@ -323,7 +323,7 @@ describe("email-digest", () => {
       const html = buildDigestHtml(events, undefined, "user-123", {}, "NYC-TEST1");
 
       const upgradeIndex = html.indexOf("Upgrade for $7/mo");
-      const referralIndex = html.indexOf("Know someone who'd love NYC alerts?");
+      const referralIndex = html.indexOf("Know someone who'd love this?");
       const unsubscribeIndex = html.indexOf("Unsubscribe");
 
       expect(referralIndex).toBeGreaterThan(upgradeIndex);

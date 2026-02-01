@@ -36,6 +36,7 @@ jest.mock("@/lib/db", () => ({
     },
     alertEvent: {
       findUnique: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn(),
     },
   },
@@ -49,6 +50,18 @@ jest.mock("@/lib/matching", () => ({
 // Mock the scraper-alerts module
 jest.mock("@/lib/scraper-alerts", () => ({
   sendScraperAlert: jest.fn().mockResolvedValue(undefined),
+}));
+
+// Mock the scoring module to make all alerts pass the isActionable filter
+jest.mock("@/lib/agents/scoring", () => ({
+  generateDedupKey: jest.fn((type, title) => `${type}:${title}`),
+  classifyTransitAlert: jest.fn().mockReturnValue({
+    severity: "major",
+    score: 70,
+    isActionable: true,
+    reason: "Test alert",
+  }),
+  shouldSuppressTransitAlert: jest.fn().mockReturnValue(false),
 }));
 
 // Get mocked prisma for test manipulation

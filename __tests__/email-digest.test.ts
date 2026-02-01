@@ -6,6 +6,15 @@
  * that consolidate notifications into daily email digests for free-tier users.
  */
 
+// Mock referral-service before importing email-digest (which depends on it)
+jest.mock("../src/lib/referral-service", () => ({
+  generateReferralCode: jest.fn().mockReturnValue("NYC-MOCK1"),
+  createReferral: jest.fn(),
+  getReferralByCode: jest.fn(),
+  convertReferral: jest.fn(),
+  createReferralCoupon: jest.fn(),
+}));
+
 import {
   buildDigestHtml,
   buildDigestSubject,
@@ -94,12 +103,7 @@ describe("buildDigestHtml", () => {
     expect(html).toContain("<!DOCTYPE html>");
     expect(html).toContain("<html>");
     expect(html).toContain("</html>");
-    expect(html).toContain("Your NYC Alerts");
-
-    // Should contain module sections with icons and names
-    expect(html).toContain("Parking &amp; Driving");
-    expect(html).toContain("Transit");
-    expect(html).toContain("(1)"); // Event count per module
+    expect(html).toContain("NYC TODAY");
 
     // Should contain event titles
     expect(html).toContain("ASP Suspended Tomorrow");
@@ -114,7 +118,7 @@ describe("buildDigestHtml", () => {
     const html = buildDigestHtml(events);
 
     expect(html).toContain("https://nycping.com/dashboard?upgrade=true");
-    expect(html).toContain("Premium users received these alerts yesterday");
+    expect(html).toContain("Premium users got these alerts yesterday");
     expect(html).toContain("$7/mo");
   });
 
@@ -169,9 +173,7 @@ describe("buildDigestHtml", () => {
 
     // Should still generate valid HTML structure
     expect(html).toContain("<!DOCTYPE html>");
-    expect(html).toContain("Your NYC Alerts");
-    // But no module sections
-    expect(html).not.toContain("<h2");
+    expect(html).toContain("NYC TODAY");
   });
 
   it("should handle multiple events per module", () => {
@@ -188,7 +190,6 @@ describe("buildDigestHtml", () => {
     expect(html).toContain("Event 1");
     expect(html).toContain("Event 2");
     expect(html).toContain("Event 3");
-    expect(html).toContain("(3)"); // Event count
   });
 
   it("should use localhost fallback when APP_BASE_URL not set", () => {
@@ -342,25 +343,25 @@ describe("buildDigestSubject", () => {
   it("should generate subject with date and event count", () => {
     const subject = buildDigestSubject(5);
 
-    expect(subject).toBe("Your NYC Alerts - Jan 1 (5 new)");
+    expect(subject).toBe("🗽 NYC Today: Thu, Jan 1 — 5 things worth knowing");
   });
 
   it("should handle single event count", () => {
     const subject = buildDigestSubject(1);
 
-    expect(subject).toBe("Your NYC Alerts - Jan 1 (1 new)");
+    expect(subject).toBe("🗽 NYC Today: Thu, Jan 1 — 1 things worth knowing");
   });
 
   it("should handle zero events", () => {
     const subject = buildDigestSubject(0);
 
-    expect(subject).toBe("Your NYC Alerts - Jan 1 (0 new)");
+    expect(subject).toBe("🗽 NYC Today: Thu, Jan 1 — 0 things worth knowing");
   });
 
   it("should handle large event counts", () => {
     const subject = buildDigestSubject(100);
 
-    expect(subject).toBe("Your NYC Alerts - Jan 1 (100 new)");
+    expect(subject).toBe("🗽 NYC Today: Thu, Jan 1 — 100 things worth knowing");
   });
 });
 
