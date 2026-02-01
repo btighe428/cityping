@@ -13,21 +13,26 @@
  * - Smart description truncation at word boundaries
  * - Module-based event prioritization
  * - Optional orchestrator-enhanced mode with AI curation
+ * - FREQUENCY CAP: Skips if daily digest already sent to user
+ * - SMART BATCHING: Only sends urgent content to avoid duplication
  *
  * Query parameters:
  * - useOrchestrator=true: Use multi-agent pipeline for content selection
+ * - force=true: Send even if daily digest was sent (for urgent alerts)
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { sendEmail } from "@/lib/resend";
 import { nycToday, NYCTodayData, NYCTodayEvent, NYCTodayNewsItem } from "@/lib/email-templates-v2";
 import { fetchNYCWeatherForecast } from "@/lib/weather";
 import { JobMonitor } from "@/lib/job-monitor";
 import { getCuratedNewsForDate } from "@/lib/news-curation";
 import { DateTime } from "luxon";
 import { orchestrateDigestV2 } from "@/lib/agents/agent-orchestrator";
-import type { ContentSelectionV2 } from "@/lib/agents/types";
+import type { ContentSelectionV2, ScoredAlertEvent } from "@/lib/agents/types";
+import { sendEmailTracked, acquireJobLock, releaseJobLock } from "@/lib/email-outbox";
+import { checkEmailFrequencyCap, shouldSkipLowValueDigest } from "@/lib/frequency-cap";
+import { MESSAGE_PRIORITY, BATCHING_CONFIG } from "@/lib/delivery-config";
 
 // =============================================================================
 // CONFIGURATION
@@ -48,6 +53,26 @@ const EXCLUDED_EVENT_PATTERNS = [
   /flu.*shot/i,
   /vaccine.*clinic/i,
   /covid.*test/i,
+];
+
+/**
+ * Low-severity transit alert patterns to exclude
+ * These create noise without actionable information
+ */
+const LOW_SEVERITY_TRANSIT_PATTERNS = [
+  /elevator.*out of service/i,
+  /elevator.*maintenance/i,
+  /escalator.*out of service/i,
+  /street elevator/i,
+  /ada.*elevator/i,
+  /board.*front.*train/i,
+  /board.*rear.*train/i,
+  /exit.*front.*train/i,
+  /exit.*rear.*train/i,
+  /trains.*run.*slow/i,
+  /expect.*delays?\s*\d+\s*min/i,  // Only "expect minor delays" not specific delays
+  /minor.*delays?/i,
+  /slight.*delays?/i,
 ];
 
 /**
@@ -91,9 +116,22 @@ function smartTruncate(text: string, maxLength: number): string {
 /**
  * Check if an event should be excluded based on title/body patterns
  */
-function shouldExcludeEvent(event: { title: string; body?: string | null }): boolean {
+function shouldExcludeEvent(event: { title: string; body?: string | null; moduleId?: string }): boolean {
   const textToCheck = `${event.title} ${event.body || ""}`.toLowerCase();
-  return EXCLUDED_EVENT_PATTERNS.some((pattern) => pattern.test(textToCheck));
+
+  // Check general exclusion patterns
+  if (EXCLUDED_EVENT_PATTERNS.some((pattern) => pattern.test(textToCheck))) {
+    return true;
+  }
+
+  // Check transit-specific low-severity patterns
+  if (event.moduleId === "transit") {
+    if (LOW_SEVERITY_TRANSIT_PATTERNS.some((pattern) => pattern.test(textToCheck))) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -169,17 +207,32 @@ function scoreEvent(event: {
 
 /**
  * Build NYC Today news items from orchestrator selection.
- * Maps the scored news articles to the email template format.
+ * Maps the scored news articles to the email template format with categorization.
  */
 function buildNewsFromOrchestrator(selection: ContentSelectionV2): NYCTodayNewsItem[] {
-  return selection.news.slice(0, 5).map((article) => ({
-    id: article.id,
-    title: article.title,
-    summary: article.summary ?? article.snippet?.slice(0, 200) ?? "",
-    source: article.source,
-    url: article.url,
-    nycAngle: article.nycAngle ?? undefined,
-  }));
+  return selection.news.slice(0, 5).map((article) => {
+    // Determine news category based on content scores and category
+    let category: NYCTodayNewsItem["category"] = "local";
+    if (article.category === "breaking" || article.scores.impact >= 80) {
+      category = "breaking";
+    } else if (article.category === "essential" || article.scores.relevance >= 75) {
+      category = "essential";
+    } else if (article.category === "civic") {
+      category = "civic";
+    } else if (article.category === "culture") {
+      category = "culture";
+    }
+
+    return {
+      id: article.id,
+      title: article.title,
+      summary: article.summary ?? article.snippet?.slice(0, 200) ?? "",
+      source: article.source,
+      url: article.url,
+      nycAngle: article.nycAngle ?? undefined,
+      category,
+    };
+  });
 }
 
 /**
@@ -193,27 +246,18 @@ function getModuleFromSourceId(sourceId: string): string {
 }
 
 /**
- * Build "What Matters Today" events from orchestrator selection.
- * Uses scored alerts with category-based formatting.
+ * Determine if an alert should be considered "breaking" based on scores and content.
  */
-function buildWhatMattersFromOrchestrator(selection: ContentSelectionV2): NYCTodayEvent[] {
-  return selection.alerts.slice(0, 6).map((alert) => {
-    const moduleId = getModuleFromSourceId(alert.sourceId);
-
-    return {
-      id: alert.id,
-      title: alert.title ?? "Alert",
-      description: formatEventDescription(alert.body, 120),
-      category: moduleId,
-      isUrgent: alert.scores.impact >= 70 || ["transit", "weather"].includes(moduleId),
-      venue: (alert.metadata as Record<string, unknown>)?.venue as string | undefined,
-    };
-  });
+function isBreakingAlert(alert: ScoredAlertEvent): boolean {
+  const isHighImpact = alert.scores.overall >= 85;
+  const isTransitCritical = /suspended|cancelled|significant|severe|emergency/i.test(alert.title);
+  return isHighImpact || isTransitCritical;
 }
 
 /**
  * Run the full orchestrator-enhanced pulse generation.
  * Uses the multi-agent pipeline for content selection and curation.
+ * Returns organized content: breaking, essentials (by module), news.
  */
 async function runOrchestratorEnhancedPulse(
   nyNow: DateTime,
@@ -226,7 +270,7 @@ async function runOrchestratorEnhancedPulse(
     healingThreshold: 50,
     selection: {
       maxNews: 5,
-      maxAlerts: 6,
+      maxAlerts: 8, // Get more to allow for proper categorization
       maxDeals: 3,
       maxEvents: 4,
       minQualityScore: 40,
@@ -246,9 +290,70 @@ async function runOrchestratorEnhancedPulse(
     console.warn(`[Daily Pulse] Orchestrator errors: ${result.errors.map(e => e.message).join("; ")}`);
   }
 
+  // Organize alerts by urgency and module
+  const alerts = result.selection.alerts;
+  
+  // 1. Breaking: High impact alerts
+  const breakingAlerts = alerts
+    .filter((a) => isBreakingAlert(a))
+    .slice(0, 3)
+    .map((a) => ({
+      id: a.id,
+      title: a.title,
+      description: formatEventDescription(a.body, 120),
+      category: getModuleFromSourceId(a.sourceId),
+      moduleId: getModuleFromSourceId(a.sourceId),
+      isUrgent: true,
+    }));
+
+  // 2. Essentials: Grouped by module
+  const nonBreakingAlerts = alerts.filter((a) => !breakingAlerts.find((b) => b.id === a.id));
+  
+  const transitAlerts = nonBreakingAlerts
+    .filter((a) => getModuleFromSourceId(a.sourceId) === "transit")
+    .slice(0, 4)
+    .map((a) => ({
+      id: a.id,
+      title: a.title,
+      description: formatEventDescription(a.body, 100),
+      category: "transit",
+      moduleId: "transit" as const,
+      isUrgent: a.scores.impact >= 70,
+    }));
+
+  const parkingAlerts = nonBreakingAlerts
+    .filter((a) => getModuleFromSourceId(a.sourceId) === "parking")
+    .slice(0, 3)
+    .map((a) => ({
+      id: a.id,
+      title: a.title,
+      description: formatEventDescription(a.body, 100),
+      category: "parking",
+      moduleId: "parking" as const,
+      isUrgent: false,
+    }));
+
+  const otherAlerts = nonBreakingAlerts
+    .filter((a) => !["transit", "parking"].includes(getModuleFromSourceId(a.sourceId)))
+    .filter((a) => a.scores.overall >= 70)
+    .slice(0, 3)
+    .map((a) => ({
+      id: a.id,
+      title: a.title,
+      description: formatEventDescription(a.body, 100),
+      category: getModuleFromSourceId(a.sourceId),
+      moduleId: getModuleFromSourceId(a.sourceId),
+      isUrgent: a.scores.impact >= 75,
+    }));
+
   return {
     news: buildNewsFromOrchestrator(result.selection),
-    whatMattersToday: buildWhatMattersFromOrchestrator(result.selection),
+    breaking: breakingAlerts,
+    essentials: {
+      transit: transitAlerts,
+      parking: parkingAlerts,
+      other: otherAlerts,
+    },
     metrics: result.metrics,
     selection: result.selection,
   };
@@ -279,9 +384,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Check for orchestrator mode
+  // Check for orchestrator mode and force mode
   const { searchParams } = new URL(request.url);
   const useOrchestrator = searchParams.get("useOrchestrator") === "true";
+  const force = searchParams.get("force") === "true";
+
+  // Acquire distributed lock to prevent concurrent runs
+  const lockId = await acquireJobLock("send-daily-pulse", 60);
+  if (!lockId) {
+    console.log("[Daily Pulse] Another instance is already running, skipping");
+    return NextResponse.json(
+      { success: false, reason: "Another instance is already running" },
+      { status: 429 }
+    );
+  }
 
   // Start job monitoring
   const jobMonitor = await JobMonitor.start("send-daily-pulse");
@@ -297,19 +413,46 @@ export async function GET(request: NextRequest) {
     // Fetch today's date boundaries
     const todayStart = nyNow.startOf("day").toJSDate();
     const todayEnd = nyNow.endOf("day").toJSDate();
+    
+    // Use today's date for idempotency tracking
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     // ==========================================================================
     // FETCH DATA IN PARALLEL
     // ==========================================================================
 
     const [alertEvents, cityEvents, weatherForecast, curatedNews] = await Promise.all([
-      // Alert events for today
+      // Alert events for today (only active, non-expired alerts)
       prisma.alertEvent.findMany({
         where: {
-          startsAt: {
-            gte: todayStart,
-            lte: todayEnd,
-          },
+          AND: [
+            {
+              OR: [
+                // Alerts that start today
+                { startsAt: { gte: todayStart, lte: todayEnd } },
+                // Alerts that started before today but haven't ended
+                {
+                  AND: [
+                    { startsAt: { lt: todayStart } },
+                    {
+                      OR: [
+                        { endsAt: { gte: todayStart } },
+                        { endsAt: null },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            // Filter out expired alerts (ended before now)
+            {
+              OR: [
+                { endsAt: null },
+                { endsAt: { gte: nyNow.toJSDate() } },
+              ],
+            },
+          ],
         },
         include: {
           source: { include: { module: true } },
@@ -346,30 +489,44 @@ export async function GET(request: NextRequest) {
     // ==========================================================================
 
     let newsItems: NYCTodayNewsItem[];
+    let breakingItems: NYCTodayEvent[] = [];
+    let essentials: { transit: NYCTodayEvent[]; parking: NYCTodayEvent[]; other: NYCTodayEvent[] } = { transit: [], parking: [], other: [] };
     let orchestratorMetrics: { totalDuration: number; avgQuality: number } | undefined;
+    let orchestratorResult: Awaited<ReturnType<typeof runOrchestratorEnhancedPulse>> | undefined;
 
     if (useOrchestrator) {
       // Use multi-agent pipeline for enhanced content selection
-      const orchestratorResult = await runOrchestratorEnhancedPulse(nyNow, weatherForecast);
+      orchestratorResult = await runOrchestratorEnhancedPulse(nyNow, weatherForecast);
       newsItems = orchestratorResult.news;
+      breakingItems = orchestratorResult.breaking;
+      essentials = orchestratorResult.essentials;
       orchestratorMetrics = {
         totalDuration: orchestratorResult.metrics.totalDuration,
         avgQuality: orchestratorResult.selection.summary.averageQuality,
       };
 
-      // Note: We could also use orchestratorResult.whatMattersToday but
-      // the traditional path has more NYC-specific curation logic
-      console.log(`[Daily Pulse] Orchestrator enhanced: ${newsItems.length} news items`);
+      console.log(`[Daily Pulse] Orchestrator enhanced: ${newsItems.length} news, ${breakingItems.length} breaking, ${essentials.transit.length} transit, ${essentials.parking.length} parking`);
     } else {
       // Traditional path: Use AI-curated news from getCuratedNewsForDate
-      newsItems = curatedNews.map((article) => ({
-        id: article.id,
-        title: article.title,
-        summary: article.summary,
-        nycAngle: article.nycAngle || undefined,
-        source: article.source,
-        url: article.url,
-      }));
+      newsItems = curatedNews.map((article) => {
+        // Categorize news items
+        let category: NYCTodayNewsItem["category"] = "local";
+        const text = `${article.title} ${article.summary}`.toLowerCase();
+        if (/breaking|urgent|emergency/i.test(text)) category = "breaking";
+        else if (/transit|mta|subway|delay/i.test(text)) category = "essential";
+        else if (/mayor|council|vote|law|policy/i.test(text)) category = "civic";
+        else if (/museum|concert|exhibit|festival/i.test(text)) category = "culture";
+
+        return {
+          id: article.id,
+          title: article.title,
+          summary: article.summary,
+          nycAngle: article.nycAngle || undefined,
+          source: article.source,
+          url: article.url,
+          category,
+        };
+      });
     }
 
     // ==========================================================================
@@ -450,52 +607,116 @@ export async function GET(request: NextRequest) {
     }
 
     // ==========================================================================
-    // BUILD "WHAT MATTERS TODAY" WITH QUALITY FILTERING
+    // ORGANIZE CONTENT BY URGENCY AND MODULE (Traditional path only)
+    // New structure: breaking → weather → essentials (by module) → headlines → don't miss → tonight
     // ==========================================================================
 
-    // Filter and score alert events
-    const curatedAlertEvents = alertEvents
-      .filter((e) => !shouldExcludeEvent({ title: e.title, body: e.body }))
-      .map((e) => ({
-        ...e,
-        relevanceScore: scoreEvent(e),
-      }))
-      .sort((a, b) => b.relevanceScore - a.relevanceScore);
+    // Only process for traditional path - orchestrator path already has these populated
+    if (!useOrchestrator) {
+      // Score and categorize all alert events
+      const scoredAlertEvents = alertEvents
+        .filter((e) => !shouldExcludeEvent({ title: e.title, body: e.body, moduleId: e.source?.moduleId }))
+        .map((e) => ({
+          ...e,
+          relevanceScore: scoreEvent(e),
+        }))
+        .sort((a, b) => b.relevanceScore - a.relevanceScore);
 
-    // Build What Matters Today from curated alerts
-    const whatMattersToday: NYCTodayEvent[] = curatedAlertEvents.slice(0, 6).map((e) => {
-      const moduleDisplay = MODULE_DISPLAY[e.source.moduleId] || { icon: "📌", name: e.source.moduleId };
-      return {
-        id: e.id,
-        title: e.title,
-        description: formatEventDescription(e.body, 120),
-        category: e.source.moduleId,
-        isUrgent: PRIORITY_MODULES.includes(e.source.moduleId) || e.relevanceScore > 80,
-        venue: (e.metadata as Record<string, unknown>)?.venue as string | undefined,
-      };
-    });
+      // 1. BREAKING: High-impact items requiring immediate attention
+      // Criteria: transit outages, severe weather, emergencies (score > 85)
+      breakingItems = scoredAlertEvents
+        .filter((e) => {
+          const isHighImpact = e.relevanceScore > 85;
+          const isTransitCritical = e.source?.moduleId === "transit" && 
+            /suspended|cancelled|significant|severe|emergency/i.test(e.title);
+          const isWeatherAlert = todayWeatherDay?.snowAmount.hasSnow && e.source?.moduleId === "weather";
+          return isHighImpact || isTransitCritical || isWeatherAlert;
+        })
+        .slice(0, 3)
+        .map((e) => ({
+          id: e.id,
+          title: e.title,
+          description: formatEventDescription(e.body, 120),
+          category: e.source?.moduleId || "general",
+          moduleId: e.source?.moduleId,
+          isUrgent: true,
+          venue: (e.metadata as Record<string, unknown>)?.venue as string | undefined,
+        }));
 
-    // If we have very few curated events, add weather as a "what matters" item
-    if (whatMattersToday.length < 3 && todayWeatherDay) {
-      // Add weather alert if significant conditions
-      const significantWeather =
+      // 2. ESSENTIALS: Grouped by module for clear organization
+      const transitItems = scoredAlertEvents
+        .filter((e) => e.source?.moduleId === "transit")
+        .filter((e) => !breakingItems.find((b) => b.id === e.id)) // Exclude breaking
+        .slice(0, 4)
+        .map((e) => ({
+          id: e.id,
+          title: e.title,
+          description: formatEventDescription(e.body, 100),
+          category: "transit",
+          moduleId: "transit" as const,
+          isUrgent: e.relevanceScore > 75,
+          venue: undefined,
+        }));
+
+      const parkingItems: NYCTodayEvent[] = scoredAlertEvents
+        .filter((e) => e.source?.moduleId === "parking")
+        .slice(0, 3)
+        .map((e) => ({
+          id: e.id,
+          title: e.title,
+          description: formatEventDescription(e.body, 100),
+          category: "parking",
+          moduleId: "parking",
+          isUrgent: false,
+        }));
+
+      // Add weather alert to essentials if significant but not breaking
+      if (todayWeatherDay && (
         todayWeatherDay.snowAmount.hasSnow ||
-        (todayWeatherDay.probabilityOfPrecipitation && todayWeatherDay.probabilityOfPrecipitation > 70) ||
+        (todayWeatherDay.probabilityOfPrecipitation && todayWeatherDay.probabilityOfPrecipitation > 60) ||
         todayWeatherDay.temperature < 32 ||
-        todayWeatherDay.temperature > 90;
-
-      if (significantWeather) {
-        whatMattersToday.unshift({
+        todayWeatherDay.temperature > 90
+      )) {
+        const weatherAlert: NYCTodayEvent = {
           id: "weather-today",
           title: `${getWeatherEmoji(todayWeatherDay.shortForecast)} ${todayWeatherDay.shortForecast}`,
           description: `High of ${todayWeatherDay.temperature}°${
             todayWeatherDay.snowAmount.hasSnow ? ` — ${todayWeatherDay.snowAmount.description}` : ""
           }`,
           category: "weather",
+          moduleId: "weather",
           isUrgent: todayWeatherDay.snowAmount.hasSnow || todayWeatherDay.temperature < 20,
-        });
+        };
+
+        if (!breakingItems.find((b) => b.id === "weather-today")) {
+          parkingItems.unshift(weatherAlert); // Weather affects parking decisions
+        }
       }
+
+      // Other essential items (non-transit, non-parking urgent items)
+      const otherEssentialItems = scoredAlertEvents
+        .filter((e) => !["transit", "parking"].includes(e.source?.moduleId || ""))
+        .filter((e) => !breakingItems.find((b) => b.id === e.id))
+        .filter((e) => e.relevanceScore > 70)
+        .slice(0, 3)
+        .map((e) => ({
+          id: e.id,
+          title: e.title,
+          description: formatEventDescription(e.body, 100),
+          category: e.source?.moduleId || "general",
+          moduleId: e.source?.moduleId,
+          isUrgent: e.relevanceScore > 80,
+          venue: (e.metadata as Record<string, unknown>)?.venue as string | undefined,
+        }));
+
+      essentials = {
+        transit: transitItems,
+        parking: parkingItems,
+        other: otherEssentialItems,
+      };
     }
+
+    console.log(`[Daily Pulse] Content organization: ${breakingItems.length} breaking, ${essentials.transit.length} transit, ${essentials.parking.length} parking, ${essentials.other.length} other`);
 
     // ==========================================================================
     // BUILD "DON'T MISS" (HIGH-VALUE ITEM WITH DEADLINE)
@@ -520,6 +741,7 @@ export async function GET(request: NextRequest) {
             200
           ),
           ctaUrl: (dontMissEvent as { sourceUrl?: string }).sourceUrl || undefined,
+          moduleIcon: MODULE_DISPLAY[(dontMissEvent as { category?: string }).category?.toLowerCase() || "events"]?.icon || "🎯",
         }
       : undefined;
 
@@ -533,7 +755,7 @@ export async function GET(request: NextRequest) {
         const hour = DateTime.fromJSDate(e.startsAt).hour;
         return hour >= 17; // 5pm or later
       })
-      .filter((e) => !shouldExcludeEvent({ title: e.title, body: e.description }))
+      .filter((e) => !shouldExcludeEvent({ title: e.title, body: e.description, moduleId: e.category?.toLowerCase() }))
       .slice(0, 4)
       .map((e) => ({
         id: e.id,
@@ -545,21 +767,72 @@ export async function GET(request: NextRequest) {
       }));
 
     // ==========================================================================
-    // SEND EMAILS
+    // SEND EMAILS - WITH FREQUENCY CAP CHECKING
     // ==========================================================================
 
     let sent = 0;
+    let skipped = 0;
     let failed = 0;
+    let capped = 0;
+    let lowValueSkipped = 0;
+
+    // Calculate total content items
+    const totalContentItems = newsItems.length + breakingItems.length + 
+                              essentials.transit.length + essentials.parking.length + 
+                              essentials.other.length + tonightInNYC.length;
+
+    // Skip if insufficient content and not forced
+    if (!force && totalContentItems < BATCHING_CONFIG.MIN_DIGEST_ITEMS) {
+      console.log(`[Daily Pulse] Skipping: insufficient content (${totalContentItems} items)`);
+      await jobMonitor.success({
+        itemsProcessed: 0,
+        itemsFailed: 0,
+        metadata: {
+          skipped: users.length,
+          reason: 'insufficient_content',
+          itemCount: totalContentItems,
+        },
+      });
+      await releaseJobLock("send-daily-pulse", lockId);
+      return NextResponse.json({
+        success: true,
+        skipped: users.length,
+        reason: 'insufficient_content',
+        itemCount: totalContentItems,
+      });
+    }
 
     for (const user of users) {
       try {
+        // Check frequency cap - daily_pulse shares cap with daily_digest
+        const capCheck = await checkEmailFrequencyCap(user.id, "daily_digest", today);
+        
+        if (!capCheck.allowed && !force) {
+          capped++;
+          console.log(`[Daily Pulse] Capped for ${user.email}: ${capCheck.reason}`);
+          continue;
+        }
+
+        // Check if content is valuable enough for this user
+        const skipCheck = await shouldSkipLowValueDigest(user.id, totalContentItems, today);
+        if (skipCheck.skip && !force) {
+          lowValueSkipped++;
+          console.log(`[Daily Pulse] Low value skipped for ${user.email}: ${skipCheck.reason}`);
+          continue;
+        }
+
         const todayData: NYCTodayData = {
           date: nyNow.toJSDate(),
-          weather,
+          weather: weather ? {
+            ...weather,
+            precipChance: todayWeatherDay?.probabilityOfPrecipitation || undefined,
+            alert: todayWeatherDay?.snowAmount.hasSnow ? "Snow expected" : undefined,
+          } : undefined,
+          breaking: breakingItems.length > 0 ? breakingItems : undefined,
           news: newsItems,
-          whatMattersToday,
+          essentials,
           dontMiss,
-          tonightInNYC,
+          tonightInNYC: tonightInNYC.length > 0 ? tonightInNYC : undefined,
           lookAhead,
           user: {
             neighborhood: user.inferredNeighborhood || undefined,
@@ -569,30 +842,59 @@ export async function GET(request: NextRequest) {
 
         const emailContent = nycToday(todayData);
 
-        await sendEmail({
-          to: user.email,
-          subject: emailContent.subject,
-          html: emailContent.html,
-          text: emailContent.text,
-        });
+        // Send with idempotency tracking
+        const result = await sendEmailTracked(
+          {
+            to: user.email,
+            subject: emailContent.subject,
+            html: emailContent.html,
+            text: emailContent.text,
+          },
+          "daily_pulse",
+          today,
+          {
+            userId: user.id,
+            tier: user.tier,
+            useOrchestrator,
+          }
+        );
 
-        sent++;
-        console.log(`[Daily Pulse] Sent to ${user.email}`);
+        if (result.alreadySent) {
+          skipped++;
+          console.log(`[Daily Pulse] Skipped duplicate for ${user.email}`);
+        } else if (result.success) {
+          sent++;
+          console.log(`[Daily Pulse] Sent to ${user.email}`);
+        } else {
+          failed++;
+          console.error(`[Daily Pulse] Failed for ${user.email}: ${result.error}`);
+        }
       } catch (error) {
         console.error(`[Daily Pulse] Failed for ${user.email}:`, error);
         failed++;
       }
     }
 
-    console.log(`[Daily Pulse] Done: ${sent} sent, ${failed} failed`);
+    console.log(`[Daily Pulse] Done: ${sent} sent, ${skipped} skipped, ${failed} failed, ${capped} capped, ${lowValueSkipped} low-value`);
 
     // Mark job as successful
+    // Calculate curated items count
+    const curatedItemsCount = breakingItems.length + essentials.transit.length + 
+                              essentials.parking.length + essentials.other.length;
+
     await jobMonitor.success({
       itemsProcessed: sent,
       itemsFailed: failed,
       metadata: {
+        skipped,
+        capped,
+        lowValueSkipped,
+        totalContentItems,
         alertEventsTotal: alertEvents.length,
-        alertEventsCurated: curatedAlertEvents.length,
+        alertEventsCurated: curatedItemsCount,
+        breakingItems: breakingItems.length,
+        transitItems: essentials.transit.length,
+        parkingItems: essentials.parking.length,
         cityEvents: cityEvents.length,
         curatedNews: curatedNews.length,
         weather: weather?.summary || null,
@@ -601,15 +903,27 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    await releaseJobLock("send-daily-pulse", lockId);
+
     return NextResponse.json({
       date: nyNow.toFormat("yyyy-MM-dd"),
       users: users.length,
       sent,
+      skipped,
       failed,
+      capped,
+      lowValueSkipped,
+      totalContentItems,
       mode: useOrchestrator ? "orchestrator" : "traditional",
       events: {
         alertEventsTotal: alertEvents.length,
-        alertEventsCurated: curatedAlertEvents.length,
+        alertEventsCurated: curatedItemsCount,
+        breakingItems: breakingItems.length,
+        essentials: {
+          transit: essentials.transit.length,
+          parking: essentials.parking.length,
+          other: essentials.other.length,
+        },
         cityEvents: cityEvents.length,
       },
       news: {
@@ -634,6 +948,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("[Daily Pulse] Job failed:", error);
     await jobMonitor.fail(error);
+    await releaseJobLock("send-daily-pulse", lockId);
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }

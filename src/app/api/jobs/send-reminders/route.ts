@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { sendSms } from '@/lib/twilio'
-import { sendEmail } from '@/lib/resend'
 import { SMS_TEMPLATES } from '@/lib/sms-templates'
-import { EMAIL_TEMPLATES } from '@/lib/email-templates'
 import { getTomorrowInTimezone, formatDateForDisplay } from '@/lib/ics'
 import { generateParkingTips, formatTipsHtml, formatTipsSms } from '@/lib/parking-tips'
-import { fetchDayAheadData, generateDayAheadEmailHtml } from '@/lib/day-ahead'
+import { sendEmailTracked, acquireJobLock, releaseJobLock } from '@/lib/email-outbox'
+import { JobMonitor } from '@/lib/job-monitor'
+import { EMAIL_TEMPLATES } from '@/lib/email-templates'
+import { checkSmsFrequencyCap, checkEmailFrequencyCap } from '@/lib/frequency-cap'
+import { MESSAGE_PRIORITY } from '@/lib/delivery-config'
 
 // Verify cron secret
 function verifyCronSecret(request: NextRequest): boolean {
@@ -26,21 +28,36 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Acquire distributed lock to prevent concurrent runs
+  const lockId = await acquireJobLock('send-reminders', 30)
+  if (!lockId) {
+    console.log('[Send Reminders] Another instance is already running, skipping')
+    return NextResponse.json({ 
+      success: false, 
+      reason: 'Another instance is already running' 
+    }, { status: 429 })
+  }
+
+  const jobMonitor = await JobMonitor.start('send-reminders')
+  const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3001'
+
   try {
     const cities = await prisma.city.findMany()
     const results = []
-    const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3001'
+    const tomorrowDate = new Date()
+    tomorrowDate.setHours(0, 0, 0, 0)
 
     for (const city of cities) {
       const tomorrow = getTomorrowInTimezone(city.timezone)
       const tomorrowFormatted = formatDateForDisplay(tomorrow)
-      const tomorrowDate = new Date(tomorrow)
+      const tomorrowDateObj = new Date(tomorrow)
+      tomorrowDateObj.setHours(0, 0, 0, 0)
 
       // Check for suspensions tomorrow
       const suspensions = await prisma.suspensionEvent.findMany({
         where: {
           cityId: city.id,
-          date: tomorrowDate,
+          date: tomorrowDateObj,
         },
       })
 
@@ -57,7 +74,7 @@ export async function GET(request: NextRequest) {
       const suspension = suspensions[0]
 
       // Generate parking tips for consecutive suspensions
-      const tips = await generateParkingTips(city.id, tomorrowDate)
+      const tips = await generateParkingTips(city.id, tomorrowDateObj)
       const tipsHtml = formatTipsHtml(tips)
       const tipsText = tips.length > 0 ? formatTipsSms(tips) : ''
 
@@ -86,17 +103,39 @@ export async function GET(request: NextRequest) {
       })
 
       let smsSent = 0
+      let smsSkipped = 0
+      let smsErrors = 0
       let emailSent = 0
-      let skipped = 0
-      let errors = 0
+      let emailSkipped = 0
+      let emailErrors = 0
+      let smsCapped = 0
+      let emailCapped = 0
+
+      const holidayName = suspension.summary || 'Holiday'
+      const manageUrl = `${baseUrl}/dashboard`
 
       for (const alert of eligibleAlerts) {
         const phone = alert.phone
         const account = phone.account
-        const holidayName = suspension.summary || 'Holiday'
 
-        // Send SMS if enabled and confirmed
+        // Check frequency caps before sending (reminders are URGENT priority)
+        const [smsCapCheck, emailCapCheck] = await Promise.all([
+          alert.notifySms && phone.smsOptInStatus === 'confirmed'
+            ? checkSmsFrequencyCap(account.id, 'reminder', new Date())
+            : Promise.resolve({ allowed: false, reason: 'SMS not enabled' }),
+          alert.notifyEmail && account.email
+            ? checkEmailFrequencyCap(account.id, 'reminder', new Date())
+            : Promise.resolve({ allowed: false, reason: 'Email not enabled' }),
+        ])
+
+        // Send SMS if enabled, confirmed, and under frequency cap
         if (alert.notifySms && phone.smsOptInStatus === 'confirmed') {
+          if (!smsCapCheck.allowed) {
+            smsCapped++
+            console.log(`[Send Reminders] SMS capped for ${phone.e164}: ${smsCapCheck.reason}`)
+            continue
+          }
+
           try {
             const smsMessage = SMS_TEMPLATES.reminder(tomorrow, holidayName)
 
@@ -106,7 +145,7 @@ export async function GET(request: NextRequest) {
                 phoneId: phone.id,
                 cityId: city.id,
                 type: 'reminder',
-                targetDate: tomorrowDate,
+                targetDate: tomorrowDateObj,
                 body: smsMessage,
                 status: 'queued',
               },
@@ -123,18 +162,23 @@ export async function GET(request: NextRequest) {
             smsSent++
           } catch (err) {
             if ((err as { code?: string })?.code === 'P2002') {
-              skipped++ // Already sent
+              smsSkipped++ // Already sent
             } else {
               console.error(`SMS error for ${phone.e164}:`, err)
-              errors++
+              smsErrors++
             }
           }
         }
 
-        // Send email if enabled and account has email
+        // Send email if enabled, has email, and under frequency cap - WITH TRACKING
         if (alert.notifyEmail && account.email) {
+          if (!emailCapCheck.allowed) {
+            emailCapped++
+            console.log(`[Send Reminders] Email capped for ${account.email}: ${emailCapCheck.reason}`)
+            continue
+          }
+
           try {
-            const manageUrl = `${baseUrl}/dashboard` // TODO: Generate manage token
             const emailContent = EMAIL_TEMPLATES.reminder(
               tomorrowFormatted,
               holidayName,
@@ -143,16 +187,34 @@ export async function GET(request: NextRequest) {
               tipsText
             )
 
-            await sendEmail({
-              to: account.email,
-              subject: emailContent.subject,
-              html: emailContent.html,
-              text: emailContent.text,
-            })
-            emailSent++
+            // Use tracked email sending for idempotency
+            const result = await sendEmailTracked(
+              {
+                to: account.email,
+                subject: emailContent.subject,
+                html: emailContent.html,
+                text: emailContent.text,
+              },
+              'reminder',
+              tomorrowDateObj,
+              {
+                cityId: city.id,
+                phoneId: phone.id,
+                accountId: account.id,
+                holidayName,
+              }
+            )
+
+            if (result.alreadySent) {
+              emailSkipped++
+            } else if (result.success) {
+              emailSent++
+            } else {
+              emailErrors++
+            }
           } catch (err) {
             console.error(`Email error for ${account.email}:`, err)
-            errors++
+            emailErrors++
           }
         }
       }
@@ -163,105 +225,40 @@ export async function GET(request: NextRequest) {
         tomorrow,
         suspension: suspension.summary,
         eligible: eligibleAlerts.length,
-        smsSent,
-        emailSent,
-        skipped,
-        errors,
+        sms: { sent: smsSent, skipped: smsSkipped, errors: smsErrors, capped: smsCapped },
+        email: { sent: emailSent, skipped: emailSkipped, errors: emailErrors, capped: emailCapped },
       })
     }
 
-    // ========================================
-    // PART 2: Send Day Ahead emails to ALL users
-    // ========================================
-    const dayAheadResults = {
-      sent: 0,
-      errors: 0,
-      errorDetails: [] as string[],
-    }
+    const totalSent = results.reduce((sum, r) => sum + (r.sms?.sent || 0) + (r.email?.sent || 0), 0)
+    const totalSkipped = results.reduce((sum, r) => sum + (r.sms?.skipped || 0) + (r.email?.skipped || 0), 0)
+    const totalErrors = results.reduce((sum, r) => sum + (r.sms?.errors || 0) + (r.email?.errors || 0), 0)
 
-    try {
-      // Fetch comprehensive day-ahead data
-      const dayAheadData = await fetchDayAheadData()
+    await jobMonitor.success({
+      itemsProcessed: totalSent,
+      itemsFailed: totalErrors,
+      metadata: {
+        citiesProcessed: results.length,
+        totalSkipped,
+      },
+    })
 
-      if (dayAheadData) {
-        console.log(`[Day Ahead] Preparing emails for ${dayAheadData.displayDate}`)
-
-        // Find ALL users with email notifications enabled
-        const allEmailUsers = await prisma.phoneCityAlert.findMany({
-          where: {
-            enabled: true,
-            notifyEmail: true,
-            phone: {
-              account: {
-                email: { not: null },
-                subscriptions: {
-                  some: {
-                    status: { in: ['active', 'trialing'] },
-                  },
-                },
-              },
-            },
-          },
-          include: {
-            phone: {
-              include: {
-                account: true,
-              },
-            },
-          },
-        })
-
-        // Deduplicate by email
-        const uniqueEmails = new Map<string, string>()
-        for (const alert of allEmailUsers) {
-          const email = alert.phone.account.email
-          if (email && !uniqueEmails.has(email)) {
-            uniqueEmails.set(email, email)
-          }
-        }
-
-        // Send Day Ahead email to each unique user
-        for (const email of uniqueEmails.keys()) {
-          try {
-            const manageUrl = `${baseUrl}/dashboard`
-            const { subject, html, text } = generateDayAheadEmailHtml(
-              dayAheadData,
-              manageUrl
-            )
-
-            await sendEmail({
-              to: email,
-              subject,
-              html,
-              text,
-            })
-            dayAheadResults.sent++
-          } catch (err) {
-            dayAheadResults.errors++
-            const errorMsg = err instanceof Error ? err.message : 'Unknown error'
-            dayAheadResults.errorDetails.push(`${email}: ${errorMsg}`)
-            console.error(`[Day Ahead] Error sending to ${email}:`, err)
-          }
-        }
-
-        console.log(`[Day Ahead] Complete: ${dayAheadResults.sent} sent, ${dayAheadResults.errors} errors`)
-      } else {
-        console.warn('[Day Ahead] Failed to fetch day-ahead data')
-      }
-    } catch (dayAheadError) {
-      console.error('[Day Ahead] Job section failed:', dayAheadError)
-    }
+    // Release the lock
+    await releaseJobLock('send-reminders', lockId)
 
     return NextResponse.json({
       success: true,
       results,
-      dayAhead: {
-        sent: dayAheadResults.sent,
-        errors: dayAheadResults.errors,
+      summary: {
+        totalSent,
+        totalSkipped,
+        totalErrors,
       },
     })
   } catch (error) {
     console.error('Send reminders job error:', error)
+    await jobMonitor.fail(error)
+    await releaseJobLock('send-reminders', lockId)
     return NextResponse.json(
       { error: 'Job failed', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

@@ -1,0 +1,32 @@
+From: CityPing Redundancy Fix
+Date: Sat, 31 Jan 2026 18:46:00 -0500
+Subject: [PATCH] Fix redundancy issues in email sending
+
+This patch fixes multiple redundancy issues causing duplicate emails:
+
+1. CRON SCHEDULE COLLISION: Staggered daily digest jobs to run 30 min apart
+2. NO EMAIL IDEMPOTENCY: Added EmailOutbox table with unique constraints
+3. DUPLICATE DAY-AHEAD: Removed duplicate logic from send-reminders
+4. NO JOB LOCKING: Added JobLock table for distributed locking
+
+---
+ prisma/schema.prisma                          |  78 +++++
+ vercel.json                                   |  14 +-
+ src/lib/email-outbox.ts                       | 342 ++++++++++++++++++
+ .../api/jobs/send-reminders/route.ts          | 147 ++++----
+ .../api/jobs/send-daily-digest/route.ts       |  64 +++-
+ .../api/jobs/send-daily-pulse/route.ts        |  75 +++-
+ .../api/jobs/send-weekly-digest/route.ts      |  75 +++-
+ .../api/jobs/send-day-ahead/route.ts          |  95 +++--
+ .../api/jobs/send-monthly-recap/route.ts      |  35 ++
+ 9 files changed, 773 insertions(+), 152 deletions(-)
+
+New files:
+- src/lib/email-outbox.ts (new email tracking module)
+- prisma/migrations/20260131_add_email_outbox/migration.sql
+- __tests__/email-outbox.test.ts
+- REDUNDANCY_FIX_SUMMARY.md
+
+Migration Required:
+Run: npx prisma migrate deploy
+Or apply: psql $DATABASE_URL -f prisma/migrations/20260131_add_email_outbox/migration.sql

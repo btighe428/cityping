@@ -25,7 +25,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { sendEmail } from "@/lib/resend";
 import {
   yourNYCWeek,
   CityPulseEvent,
@@ -34,6 +33,8 @@ import {
 } from "@/lib/email-templates-v2";
 import { generateEditorNote } from "@/lib/ai-copy";
 import { DateTime } from "luxon";
+import { sendEmailTracked, acquireJobLock, releaseJobLock } from "@/lib/email-outbox";
+import { JobMonitor } from "@/lib/job-monitor";
 
 /**
  * Verify cron secret for authorization.
@@ -132,10 +133,26 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Acquire distributed lock to prevent concurrent runs
+  const lockId = await acquireJobLock("send-weekly-digest", 60);
+  if (!lockId) {
+    console.log("[Weekly Digest] Another instance is already running, skipping");
+    return NextResponse.json(
+      { success: false, reason: "Another instance is already running" },
+      { status: 429 }
+    );
+  }
+
+  const jobMonitor = await JobMonitor.start("send-weekly-digest");
+
   try {
     const nyNow = DateTime.now().setZone("America/New_York");
     const weekStart = nyNow.startOf("day");
     const weekEnd = weekStart.plus({ days: 7 });
+    
+    // Use Sunday's date for idempotency tracking
+    const weekDate = weekStart.toJSDate();
+    weekDate.setHours(0, 0, 0, 0);
 
     console.log(`[Weekly Digest] Processing week: ${getWeekRange(weekStart, weekEnd)}`);
 
@@ -311,6 +328,7 @@ export async function GET(request: NextRequest) {
     const editorNote = await generateEditorNote(allEvents, actionRequired);
 
     let sent = 0;
+    let skipped = 0;
     let failed = 0;
 
     for (const user of users) {
@@ -330,15 +348,32 @@ export async function GET(request: NextRequest) {
 
         const email = yourNYCWeek(weekData);
 
-        await sendEmail({
-          to: user.email,
-          subject: email.subject,
-          html: email.html,
-          text: email.text,
-        });
+        // Send with idempotency tracking
+        const result = await sendEmailTracked(
+          {
+            to: user.email,
+            subject: email.subject,
+            html: email.html,
+            text: email.text,
+          },
+          "weekly_digest",
+          weekDate,
+          {
+            userId: user.id,
+            tier: user.tier,
+          }
+        );
 
-        sent++;
-        console.log(`[Weekly Digest] Sent to ${user.email}`);
+        if (result.alreadySent) {
+          skipped++;
+          console.log(`[Weekly Digest] Skipped duplicate for ${user.email}`);
+        } else if (result.success) {
+          sent++;
+          console.log(`[Weekly Digest] Sent to ${user.email}`);
+        } else {
+          failed++;
+          console.error(`[Weekly Digest] Failed for ${user.email}: ${result.error}`);
+        }
       } catch (error) {
         console.error(`[Weekly Digest] Failed to send to ${user.email}:`, error);
         failed++;
@@ -346,13 +381,25 @@ export async function GET(request: NextRequest) {
     }
 
     console.log(
-      `[Weekly Digest] Completed: ${users.length} users, ${sent} sent, ${failed} failed`
+      `[Weekly Digest] Completed: ${users.length} users, ${sent} sent, ${skipped} skipped, ${failed} failed`
     );
+
+    await jobMonitor.success({
+      itemsProcessed: sent,
+      itemsFailed: failed,
+      metadata: {
+        skipped,
+        weekRange: getWeekRange(weekStart, weekEnd),
+      },
+    });
+
+    await releaseJobLock("send-weekly-digest", lockId);
 
     return NextResponse.json({
       weekRange: getWeekRange(weekStart, weekEnd),
       users: users.length,
       sent,
+      skipped,
       failed,
       events: {
         cityEvents: cityEvents.length,
@@ -362,6 +409,8 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("[Weekly Digest] Job failed:", error);
+    await jobMonitor.fail(error);
+    await releaseJobLock("send-weekly-digest", lockId);
     return NextResponse.json(
       {
         error: "Job failed",

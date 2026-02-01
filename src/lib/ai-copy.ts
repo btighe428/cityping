@@ -188,6 +188,7 @@ Write ONE sentence (max 100 characters) with local insight:`;
 
 /**
  * Template-based editor note generation (fallback)
+ * Revised for specificity and clarity
  */
 function generateEditorNoteFromTemplates(
   events: CityPulseEvent[],
@@ -197,83 +198,90 @@ function generateEditorNoteFromTemplates(
 
   // Pick the best template based on the week's content
   if (actionRequired.length >= 3) {
-    return "Busy week ahead — multiple deadlines you'll want to know about.";
+    return `${actionRequired.length} deadlines this week; review the Action Required section.`;
   }
 
   if (breakdown.culture > 5) {
-    return "Big week for culture lovers. Shows, exhibits, and hidden gems.";
+    return `${breakdown.culture} cultural events this week; book tickets by Thursday.`;
   }
 
   if (breakdown.sports > 3) {
-    return "Sports fans, clear your calendar. Big games this week.";
+    return `${breakdown.sports} major games; expect transit delays near stadiums.`;
   }
 
   if (breakdown.food > 3) {
-    return "Good week to eat. New openings, deals, and a few local secrets.";
+    return `${breakdown.food} dining events; reservations open this week.`;
   }
 
   if (events.length < 10) {
-    return "Quiet week — perfect for catching up on museum shows before crowds hit.";
+    return "Light week; good time to clear your calendar.";
   }
 
   if (events.length > 30) {
-    return "Packed week. We've curated the highlights so you don't miss what matters.";
+    return `${events.length} events this week; priorities highlighted below.`;
   }
 
-  return `${events.length} things happening this week. Here's what matters.`;
+  return `${events.length} events this week. Review what matters.`;
 }
 
 /**
  * Template-based event copy generation (fallback)
+ * Revised for specificity and actionable value
  */
 function generateEventCopyFromTemplates(event: CityPulseEvent): string {
   const templates: Record<string, string[]> = {
     culture: [
-      "Worth the trip.",
-      "Local favorite, skip the line by going early.",
-      "One of the city's hidden gems.",
+      "Opens Tuesday; weekday mornings are quietest.",
+      "Limited run—book by Friday for opening week.",
+      "Member preview Thursday; public opens Friday.",
     ],
     sports: [
-      "Big game energy.",
-      "Watch parties citywide if you can't get tickets.",
-      "This one matters for the standings.",
+      "Postseason starts; expect crowds near stadium.",
+      "Rivalry game; subway delays likely after 9 PM.",
+      "Weekday matinee; best availability for singles.",
     ],
     food: [
-      "Book early, this one fills up.",
-      "The kind of deal locals wait for.",
-      "New spot worth checking out.",
+      "Reservations open 30 days out; book at midnight.",
+      "Walk-ins accepted after 9 PM on weeknights.",
+      "Soft opening; full menu launches next week.",
     ],
     civic: [
-      "Apply even if you think you won't qualify.",
-      "Window is short — don't miss it.",
-      "Worth the paperwork.",
+      "Application closes Friday; decisions in 6 weeks.",
+      "Public comment period ends Thursday.",
+      "Eligibility expanded; reapply if denied previously.",
     ],
     seasonal: [
-      "Annual tradition, but skip the crowds — locals know when to go.",
-      "The kind of NYC moment you remember.",
-      "Timing is everything with this one.",
+      "Peak bloom expected next week; go early.",
+      "Last weekend for ice skating at this location.",
+      "Holiday markets open; weekdays avoid crowds.",
     ],
     local: [
-      "Neighborhood gem.",
-      "The real NYC experience.",
-      "Locals-only vibe.",
+      "Community board meets Tuesday; agenda online.",
+      "Street closure Saturday 8 AM–4 PM.",
+      "New route affects this neighborhood starting Monday.",
     ],
     transit: [
-      "Plan your commute accordingly.",
-      "Good news for the neighborhood.",
-      "Check for updates before you head out.",
+      "Weekend service changes; allow extra 20 minutes.",
+      "Express running local; check platform signs.",
+      "Station closure; use nearby transfer.",
     ],
     weather: [
-      "Dress accordingly.",
-      "Perfect excuse to change your plans.",
-      "The city transforms when this happens.",
+      "Accumulation expected; ASP may suspend.",
+      "High wind advisory; outdoor events may cancel.",
+      "Heat index over 100; cooling centers open.",
     ],
   };
 
   const categoryTemplates = templates[event.category] || templates.local;
-  const randomIndex = Math.floor(Math.random() * categoryTemplates.length);
 
-  return categoryTemplates[randomIndex];
+  // Select based on event characteristics for consistency
+  let index = 0;
+  if (event.deadlineAt) index = 0;
+  else if (event.venue?.includes("weekend")) index = 1;
+  else if (event.isActionRequired) index = 2;
+  else index = Math.floor(Math.random() * categoryTemplates.length);
+
+  return categoryTemplates[index];
 }
 
 /**

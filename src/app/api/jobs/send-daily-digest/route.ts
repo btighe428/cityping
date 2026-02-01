@@ -33,7 +33,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { sendEmail } from "@/lib/resend";
 import {
   buildDigestHtml,
   buildDigestSubject,
@@ -53,6 +52,8 @@ import {
   buildEnhancedDigestHtml,
   buildEnhancedDigestText,
 } from "@/lib/email-templates-enhanced";
+import { sendEmailTracked, acquireJobLock, releaseJobLock } from "@/lib/email-outbox";
+import { JobMonitor } from "@/lib/job-monitor";
 
 // Allow up to 120s for LLM calls (horizon + clustering)
 export const maxDuration = 120;
@@ -258,6 +259,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Acquire distributed lock to prevent concurrent runs
+  const lockId = await acquireJobLock("send-daily-digest", 60);
+  if (!lockId) {
+    console.log("[DailyDigest] Another instance is already running, skipping");
+    return NextResponse.json(
+      { success: false, reason: "Another instance is already running" },
+      { status: 429 }
+    );
+  }
+
+  const jobMonitor = await JobMonitor.start("send-daily-digest");
+
   const { searchParams } = new URL(request.url);
   const force = searchParams.get("force") === "true";
   const skipEnhanced = searchParams.get("skipEnhanced") === "true";
@@ -274,6 +287,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   try {
     const now = new Date();
+    // Use today's date for idempotency tracking
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     // -------------------------------------------------------------------------
     // 1. Generate Enhanced Digest (shared across all users)
@@ -370,23 +386,41 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           continue;
         }
 
-        // Send email
-        await sendEmail({
-          to: user.email,
-          subject,
-          html,
-          text: enhancedDigest ? buildEnhancedDigestText(enhancedDigest) : undefined,
-        });
-
-        // Mark notifications as sent
-        await markNotificationsSent(pendingNotifications.map((n) => n.id));
-
-        result.digestsSent++;
-        console.log(
-          `[DailyDigest] Sent to ${user.email} (${result.mode}, ${
-            hasNotifications ? pendingNotifications.length + " notifications" : "enhanced only"
-          })`
+        // Send email with idempotency tracking
+        const emailResult = await sendEmailTracked(
+          {
+            to: user.email,
+            subject,
+            html,
+            text: enhancedDigest ? buildEnhancedDigestText(enhancedDigest) : undefined,
+          },
+          "daily_digest",
+          today,
+          {
+            userId: user.id,
+            mode: result.mode,
+            notificationCount: pendingNotifications.length,
+          }
         );
+
+        if (emailResult.alreadySent) {
+          result.skipped++;
+          console.log(`[DailyDigest] Skipped duplicate for ${user.email}`);
+        } else if (emailResult.success) {
+          // Mark notifications as sent
+          await markNotificationsSent(pendingNotifications.map((n) => n.id));
+          result.digestsSent++;
+          console.log(
+            `[DailyDigest] Sent to ${user.email} (${result.mode}, ${
+              hasNotifications ? pendingNotifications.length + " notifications" : "enhanced only"
+            })`
+          );
+        } else {
+          result.failed++;
+          const errorMsg = `Failed to send to ${user.email}: ${emailResult.error}`;
+          console.error(`[DailyDigest] ${errorMsg}`);
+          result.errors.push(errorMsg);
+        }
       } catch (error) {
         result.failed++;
         const errorMsg = `Failed to send to ${user.email}: ${
@@ -406,6 +440,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       `[DailyDigest] Complete: ${result.digestsSent} sent, ${result.skipped} skipped, ${result.failed} failed (${result.mode} mode)`
     );
 
+    await jobMonitor.success({
+      itemsProcessed: result.digestsSent,
+      itemsFailed: result.failed,
+      metadata: {
+        totalUsers: result.totalUsers,
+        skipped: result.skipped,
+        mode: result.mode,
+      },
+    });
+
+    await releaseJobLock("send-daily-digest", lockId);
     return NextResponse.json(result);
   } catch (error) {
     const errorMsg = `Job failed: ${
@@ -413,6 +458,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }`;
     console.error(`[DailyDigest] ${errorMsg}`, error);
     result.errors.push(errorMsg);
+    await jobMonitor.fail(error);
+    await releaseJobLock("send-daily-digest", lockId);
     return NextResponse.json(result, { status: 500 });
   }
 }

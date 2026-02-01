@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { sendSms } from '@/lib/twilio'
 import { SMS_TEMPLATES } from '@/lib/sms-templates'
-import { getPreviousMonthRange, getTomorrowInTimezone } from '@/lib/ics'
+import { getPreviousMonthRange } from '@/lib/ics'
 import { DateTime } from 'luxon'
+import { acquireJobLock, releaseJobLock } from '@/lib/email-outbox'
+import { JobMonitor } from '@/lib/job-monitor'
 
 // Verify cron secret
 function verifyCronSecret(request: NextRequest): boolean {
@@ -22,6 +24,18 @@ export async function GET(request: NextRequest) {
   if (!verifyCronSecret(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  // Acquire distributed lock to prevent concurrent runs
+  const lockId = await acquireJobLock('send-monthly-recap', 30)
+  if (!lockId) {
+    console.log('[Monthly Recap] Another instance is already running, skipping')
+    return NextResponse.json({ 
+      success: false, 
+      reason: 'Another instance is already running' 
+    }, { status: 429 })
+  }
+
+  const jobMonitor = await JobMonitor.start('send-monthly-recap')
 
   try {
     const cities = await prisma.city.findMany()
@@ -158,12 +172,28 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    const totalSent = results.reduce((sum, r) => sum + r.sent, 0)
+    const totalErrors = results.reduce((sum, r) => sum + r.errors, 0)
+
+    await jobMonitor.success({
+      itemsProcessed: totalSent,
+      itemsFailed: totalErrors,
+      metadata: {
+        cities: results.length,
+        results,
+      },
+    })
+
+    await releaseJobLock('send-monthly-recap', lockId)
+
     return NextResponse.json({
       success: true,
       results,
     })
   } catch (error) {
     console.error('Monthly recap job error:', error)
+    await jobMonitor.fail(error)
+    await releaseJobLock('send-monthly-recap', lockId)
     return NextResponse.json(
       { error: 'Job failed', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

@@ -83,30 +83,46 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           summary: "Sunny",
         };
 
-    // What Matters Today - transit, parking, urgent
-    const whatMattersToday: NYCTodayEvent[] = [
-      {
-        id: "asp-1",
-        title: "ASP in effect",
-        description: "moved your car?",
-        category: "transit",
-        isUrgent: false,
-      },
-      {
-        id: "transit-1",
-        title: "L train delays",
-        description: "btwn Bedford & 8th Ave til noon",
-        category: "transit",
-        isUrgent: true,
-      },
-      {
-        id: "sports-1",
-        title: "Rangers vs Bruins 7pm",
-        description: "clinch playoff spot tonight",
-        category: "sports",
-        isUrgent: false,
-      },
-    ];
+    // Build essentials grouped by module (new structure)
+    const essentials = {
+      transit: [
+        {
+          id: "transit-1",
+          title: "L train delays",
+          description: "btwn Bedford & 8th Ave til noon",
+          category: "transit",
+          moduleId: "transit" as const,
+          isUrgent: true,
+        },
+        {
+          id: "transit-2",
+          title: "Normal service on most lines",
+          description: "minor delays possible on 7 train",
+          category: "transit",
+          moduleId: "transit" as const,
+          isUrgent: false,
+        },
+      ],
+      parking: [
+        {
+          id: "asp-1",
+          title: "ASP in effect",
+          description: "moved your car?",
+          category: "parking",
+          moduleId: "parking" as const,
+          isUrgent: false,
+        },
+      ],
+      other: [
+        {
+          id: "sports-1",
+          title: "Rangers vs Bruins 7pm",
+          description: "clinch playoff spot tonight",
+          category: "sports",
+          isUrgent: false,
+        },
+      ],
+    };
 
     // Don't Miss - one urgent signup or deadline
     const dontMiss = evergreenEvents.find(e =>
@@ -157,15 +173,17 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       date: nyNow.toJSDate(),
       weather,
       news: newsItems.length > 0 ? newsItems : undefined,
-      whatMattersToday,
+      essentials,
       dontMiss: dontMiss ? {
         title: `${dontMiss.name} registration opens 10am`,
         description: dontMiss.insiderContext?.slice(0, 100) || "Last year sold out in 3 hours. Set an alarm.",
         ctaUrl: dontMiss.sources[0],
+        moduleIcon: "🎟️",
       } : {
         title: "Open House NY registration opens 10am",
         description: "Last year sold out in 3 hours. Set an alarm.",
         ctaUrl: "https://ohny.org",
+        moduleIcon: "🏛️",
       },
       tonightInNYC,
       lookAhead,
@@ -188,7 +206,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       success: true,
       sections: {
         news: newsItems.length,
-        whatMattersToday: whatMattersToday.length,
+        essentials: {
+          transit: essentials.transit.length,
+          parking: essentials.parking.length,
+          other: essentials.other.length,
+        },
         dontMiss: !!todayData.dontMiss,
         tonightInNYC: tonightInNYC.length,
         lookAhead: lookAhead.length,

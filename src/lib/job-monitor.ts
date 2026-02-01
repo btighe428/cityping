@@ -71,6 +71,10 @@ export const JOB_CONFIGS: Record<string, { displayName: string; frequency: strin
   "scrape-air-quality": { displayName: "Air Quality", frequency: "8h", alertAfterMissed: 2 },
   "scrape-dining": { displayName: "Dining Deals", frequency: "24h", alertAfterMissed: 2 },
   "scrape-parks": { displayName: "Parks Events", frequency: "24h", alertAfterMissed: 2 },
+  // Time-slot email system v2
+  "email-timeslot-morning": { displayName: "Morning Briefing (9am)", frequency: "24h", alertAfterMissed: 1 },
+  "email-timeslot-noon": { displayName: "Midday Pulse (12pm)", frequency: "24h", alertAfterMissed: 2 },
+  "email-timeslot-evening": { displayName: "Evening Wind-Down (7pm)", frequency: "24h", alertAfterMissed: 1 },
 };
 
 // =============================================================================

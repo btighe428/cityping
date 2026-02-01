@@ -34,6 +34,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendSms } from "@/lib/twilio";
+import { checkSmsFrequencyCap } from "@/lib/frequency-cap";
+import { BATCHING_CONFIG, isQuietHours } from "@/lib/delivery-config";
+
+/**
+ * Small delay between SMS sends to avoid rate limiting
+ */
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 /**
  * Verify cron secret for authorization.
@@ -120,6 +129,19 @@ export async function POST(request: NextRequest) {
   try {
     const now = new Date();
 
+    // Skip during quiet hours (10pm-7am ET) to respect user sleep
+    if (isQuietHours(now)) {
+      console.log("[Send Notifications] Skipping during quiet hours");
+      return NextResponse.json({
+        processed: 0,
+        sent: 0,
+        failed: 0,
+        skipped: 0,
+        capped: 0,
+        reason: "quiet_hours",
+      });
+    }
+
     // Get pending SMS notifications ready to send
     const pendingNotifications = await prisma.notificationOutbox.findMany({
       where: {
@@ -137,12 +159,13 @@ export async function POST(request: NextRequest) {
           },
         },
       },
-      take: 100, // Process in batches to limit memory usage
+      take: BATCHING_CONFIG.NOTIFICATION_BATCH_SIZE,
     });
 
     let sent = 0;
     let failed = 0;
     let skipped = 0;
+    let capped = 0;
 
     for (const notification of pendingNotifications) {
       // Skip if user has no phone number
@@ -152,6 +175,23 @@ export async function POST(request: NextRequest) {
           data: { status: "skipped" },
         });
         skipped++;
+        continue;
+      }
+
+      // Check frequency cap before sending
+      const capCheck = await checkSmsFrequencyCap(
+        notification.user.id, 
+        notification.event.source?.moduleId || "general",
+        now
+      );
+      
+      if (!capCheck.allowed) {
+        console.log(`[Send Notifications] SMS capped for user ${notification.user.id}: ${capCheck.reason}`);
+        await prisma.notificationOutbox.update({
+          where: { id: notification.id },
+          data: { status: "skipped" },
+        });
+        capped++;
         continue;
       }
 
@@ -166,6 +206,11 @@ export async function POST(request: NextRequest) {
           data: { status: "sent", sentAt: new Date() },
         });
         sent++;
+
+        // Rate limit: delay between sends to avoid Twilio rate limits
+        if (sent < pendingNotifications.length) {
+          await delay(BATCHING_CONFIG.SMS_RATE_LIMIT_MS);
+        }
       } catch (error) {
         // Log error and update status to failed
         console.error(
@@ -181,7 +226,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(
-      `[Send Notifications] Processed ${pendingNotifications.length}: ${sent} sent, ${failed} failed, ${skipped} skipped`
+      `[Send Notifications] Processed ${pendingNotifications.length}: ${sent} sent, ${failed} failed, ${skipped} skipped, ${capped} capped`
     );
 
     return NextResponse.json({
@@ -189,6 +234,7 @@ export async function POST(request: NextRequest) {
       sent,
       failed,
       skipped,
+      capped,
     });
   } catch (error) {
     console.error("[Send Notifications] Job failed:", error);

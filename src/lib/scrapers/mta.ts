@@ -38,6 +38,7 @@ import { prisma } from "../db";
 import { matchEventToUsers, MatchableEvent } from "../matching";
 import { MtaAlertSchema, MtaAlert as ValidatedMtaAlert } from "../schemas/mta-alert.schema";
 import { sendScraperAlert, ScraperError } from "../scraper-alerts";
+import { generateDedupKey, classifyTransitAlert, shouldSuppressTransitAlert, TransitAlertClassification } from "../agents/scoring";
 
 /**
  * Internal representation of an MTA alert after transformation.
@@ -250,6 +251,8 @@ export function validateAndFilterAlerts(rawAlerts: unknown[]): {
 export async function ingestMtaAlerts(): Promise<{
   created: number;
   skipped: number;
+  filtered: number;
+  bySeverity: Record<string, number>;
 }> {
   // Look up the MTA alert source configuration
   const source = await prisma.alertSource.findUnique({
@@ -279,11 +282,58 @@ export async function ingestMtaAlerts(): Promise<{
 
   let created = 0;
   let skipped = 0;
+  let contentDuplicates = 0;
+  let lowSignalFiltered = 0;
+  const severityCounts: Record<string, number> = {
+    critical: 0,
+    major: 0,
+    minor: 0,
+    planned: 0,
+    info: 0,
+  };
+
+  // Fetch recent alerts for content-based deduplication
+  // MTA often updates alerts with new IDs but same content
+  const recentAlerts = await prisma.alertEvent.findMany({
+    where: {
+      sourceId: source.id,
+      createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+    },
+    select: {
+      id: true,
+      title: true,
+      body: true,
+      metadata: true,
+      createdAt: true,
+    },
+  });
+
+  // Build lookup map for content deduplication
+  const recentAlertMap = new Map(recentAlerts.map(a => [
+    generateDedupKey("transit", a.title),
+    a
+  ]));
 
   // Process only validated alerts
   for (const alert of alerts) {
-    // Check for existing event using composite unique constraint
-    // This implements exactly-once semantics for alert processing
+    // === STEP 1: Severity Classification & Signal Filtering ===
+    const classification = classifyTransitAlert(alert.header, alert.description);
+    severityCounts[classification.severity]++;
+    
+    // Filter out low-signal alerts at ingestion time
+    // Only ingest actionable alerts (critical, major) - skip minor/planned/info
+    if (!classification.isActionable) {
+      lowSignalFiltered++;
+      console.log(`[MTA Scraper] Filtered low-signal ${classification.severity} alert: "${alert.header.substring(0, 50)}..." (${classification.reason})`);
+      continue;
+    }
+    
+    // Log high-severity alerts for monitoring
+    if (classification.severity === "critical") {
+      console.log(`[MTA Scraper] CRITICAL alert detected: "${alert.header}" - Affected: ${alert.affectedLines.join(", ")}`);
+    }
+
+    // === STEP 2: External ID deduplication (exact same alert) ===
     const existing = await prisma.alertEvent.findUnique({
       where: {
         sourceId_externalId: {
@@ -298,7 +348,51 @@ export async function ingestMtaAlerts(): Promise<{
       continue;
     }
 
-    // Create new AlertEvent with transit-specific metadata
+    // === STEP 3: Content-based deduplication with severity comparison ===
+    const contentKey = generateDedupKey("transit", alert.header);
+    const contentDuplicate = recentAlertMap.get(contentKey);
+
+    if (contentDuplicate) {
+      // Additional check: same affected lines = same alert
+      const existingLines = (contentDuplicate.metadata as { affectedLines?: string[] })?.affectedLines || [];
+      const hasSameLines = alert.affectedLines.length === existingLines.length &&
+        alert.affectedLines.every(line => existingLines.includes(line));
+
+      if (hasSameLines) {
+        contentDuplicates++;
+        console.log(`[MTA Scraper] Content duplicate detected: "${alert.header.substring(0, 50)}..."`);
+        continue;
+      }
+    }
+    
+    // === STEP 4: Similar alert suppression ===
+    // Check for similar recent alerts on same lines
+    const similarRecentAlert = recentAlerts.find(recent => {
+      const recentLines = (recent.metadata as { affectedLines?: string[] })?.affectedLines || [];
+      const hasOverlappingLines = alert.affectedLines.some(line => recentLines.includes(line));
+      if (!hasOverlappingLines) return false;
+      
+      // Calculate text similarity
+      const recentText = `${recent.title} ${recent.body || ""}`.toLowerCase();
+      const alertText = `${alert.header} ${alert.description || ""}`.toLowerCase();
+      const commonWords = ["delays", "suspended", "service", "trains", "station", "due to"];
+      const sharedKeywords = commonWords.filter(word => 
+        recentText.includes(word) && alertText.includes(word)
+      );
+      return sharedKeywords.length >= 2;
+    });
+    
+    if (similarRecentAlert) {
+      const existingClass = classifyTransitAlert(similarRecentAlert.title, similarRecentAlert.body);
+      // If existing alert is same or higher severity, skip this one
+      if (existingClass.score >= classification.score) {
+        contentDuplicates++;
+        console.log(`[MTA Scraper] Similar alert suppression: "${alert.header.substring(0, 50)}..." (similar to ${existingClass.severity} alert from ${similarRecentAlert.createdAt.toISOString()})`);
+        continue;
+      }
+    }
+
+    // Create new AlertEvent with transit-specific metadata including severity
     const event = await prisma.alertEvent.create({
       data: {
         sourceId: source.id,
@@ -314,6 +408,10 @@ export async function ingestMtaAlerts(): Promise<{
         neighborhoods: [], // MTA alerts are line-based, not neighborhood-based
         metadata: {
           affectedLines: alert.affectedLines,
+          severity: classification.severity,
+          severityScore: classification.score,
+          isActionable: classification.isActionable,
+          classificationReason: classification.reason,
         },
       },
       include: {
@@ -339,11 +437,21 @@ export async function ingestMtaAlerts(): Promise<{
 
   const totalFetched = rawAlerts.length;
   const validationErrors = errors.length;
+  const totalSkipped = skipped + contentDuplicates + lowSignalFiltered;
+  
   console.log(
-    `[MTA Scraper] Processed ${totalFetched} alerts: ${alerts.length} valid, ${validationErrors} invalid, ${created} created, ${skipped} skipped`
+    `[MTA Scraper] Processed ${totalFetched} alerts: ${alerts.length} valid, ${validationErrors} invalid, ${created} created, ${skipped} ID dupes, ${contentDuplicates} content dupes, ${lowSignalFiltered} low-signal filtered`
+  );
+  console.log(
+    `[MTA Scraper] Severity breakdown: critical=${severityCounts.critical}, major=${severityCounts.major}, minor=${severityCounts.minor}, planned=${severityCounts.planned}, info=${severityCounts.info}`
   );
 
-  return { created, skipped };
+  return { 
+    created, 
+    skipped: totalSkipped,
+    filtered: lowSignalFiltered,
+    bySeverity: severityCounts,
+  };
 }
 
 // ============================================================================

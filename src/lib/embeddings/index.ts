@@ -50,6 +50,7 @@ export {
   selectTopClusters,
   getClusterStats,
   mergeClusters,
+  enrichClusterNames,
   DEFAULT_CLUSTER_THRESHOLD,
   type ClusterableItem,
   type TopicCluster,

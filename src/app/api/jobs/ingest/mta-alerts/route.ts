@@ -102,14 +102,16 @@ export async function GET(request: NextRequest) {
     const result = await ingestMtaAlerts();
 
     console.log(
-      `[MTA Ingestion] Job completed: ${result.created} created, ${result.skipped} skipped`
+      `[MTA Ingestion] Job completed: ${result.created} created, ${result.skipped} skipped, ${result.filtered} low-signal filtered`
     );
 
     await jobMonitor.success({
       itemsProcessed: result.created,
       metadata: {
         skipped: result.skipped,
-        total: result.created + result.skipped,
+        filtered: result.filtered,
+        bySeverity: result.bySeverity,
+        total: result.created + result.skipped + result.filtered,
       },
     });
 

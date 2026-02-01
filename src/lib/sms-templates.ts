@@ -1,19 +1,19 @@
 // SMS Message Templates
-// Friendly/casual tone as per design spec
+// Professional, concise tone — clear value in every character
 
 export const SMS_TEMPLATES = {
   // After checkout - request opt-in confirmation
   optIn: () =>
-    `CityPing here! Reply YES to start getting alerts. STOP to cancel, HELP for help.`,
+    `CityPing: Reply YES to receive ASP suspension alerts before holidays. Reply STOP to cancel.`,
 
   // After user replies YES
   confirmed: () =>
-    `You're all set! We'll text you the evening before ASP suspensions. ` + String.fromCodePoint(0x1F697),
+    `Confirmed. You'll receive ASP alerts the evening before each suspension.`,
 
   // Night before suspension - main product moment
   reminder: (date: string, holidayName: string) => {
     const emoji = getHolidayEmoji(holidayName)
-    return `Hey! Tomorrow's ${holidayName} — ASP is OFF. Sleep in, your car's fine. ${emoji}`
+    return `Tomorrow (${date}): ASP suspended for ${holidayName}. No need to move your car. ${emoji}`
   },
 
   // Monthly recap - 1st of each month
@@ -24,61 +24,60 @@ export const SMS_TEMPLATES = {
     nextMonthPreview?: string
   ) => {
     const highlightText = highlights.length > 0
-      ? ` (${highlights.join(', ')})`
+      ? ` Notable: ${highlights.join(', ')}.`
       : ''
     const preview = nextMonthPreview
       ? ` ${nextMonthPreview}`
       : ''
-    return `CityPing ${monthName} recap: ${suspensionCount} suspension day${suspensionCount !== 1 ? 's' : ''}${highlightText}.${preview} ` + String.fromCodePoint(0x1F697)
+    return `${monthName}: ${suspensionCount} ASP suspension day${suspensionCount !== 1 ? 's' : ''}.${highlightText}${preview}`
   },
 
   // Response to HELP keyword
   help: () =>
-    `CityPing: NYC parking alerts. Reply MANAGE for settings, STOP to cancel. Questions? support@cityping.net`,
+    `CityPing sends ASP suspension alerts for NYC. Reply MANAGE for settings, STOP to unsubscribe, START to resubscribe.`,
 
   // Response to STOP keyword
   stopped: () =>
-    `You've been unsubscribed from CityPing. Reply START to resubscribe anytime.`,
+    `Unsubscribed. To resume alerts, reply START or visit cityping.net.`,
 
   // Response to START/UNSTOP when subscription is active
   restarted: () =>
-    `Welcome back! You'll receive ASP suspension alerts again. ` + String.fromCodePoint(0x1F697),
+    `Alerts resumed. You'll receive notifications before ASP suspensions.`,
 
   // Response to START/UNSTOP when no active subscription
   noSubscription: () =>
-    `To receive alerts, please subscribe at cityping.net`,
+    `Visit cityping.net to activate your subscription.`,
 
   // Response to MANAGE keyword - includes link
   manageLink: (url: string) =>
-    `Manage your CityPing settings: ${url} (link expires in 15 min)`,
+    `Manage settings: ${url} (expires in 15 min)`,
 
   // Response to YES when already confirmed
   alreadyConfirmed: () =>
-    `You're already set up! We'll text you before ASP suspensions.`,
+    `Your alerts are active. You'll be notified before ASP suspensions.`,
 
   // Response to YES when subscription is not active
   subscriptionRequired: () =>
-    `Your subscription isn't active. Visit cityping.net to resubscribe.`,
+    `Subscription required. Visit cityping.net to activate.`,
 }
 
 // Map holiday names to appropriate emojis
 function getHolidayEmoji(holidayName: string): string {
   const name = holidayName.toLowerCase()
 
-  if (name.includes('christmas')) return String.fromCodePoint(0x1F384) // Christmas tree
-  if (name.includes('new year')) return String.fromCodePoint(0x1F389) // Party popper
-  if (name.includes('thanksgiving')) return String.fromCodePoint(0x1F983) // Turkey
-  if (name.includes('independence') || name.includes('july 4')) return String.fromCodePoint(0x1F386) // Fireworks
-  if (name.includes('memorial')) return String.fromCodePoint(0x1F1FA, 0x1F1F8) // US flag
-  if (name.includes('labor')) return String.fromCodePoint(0x1F477) // Construction worker
-  if (name.includes('mlk') || name.includes('martin luther king')) return String.fromCodePoint(0x270A) // Raised fist
-  if (name.includes('president')) return String.fromCodePoint(0x1F1FA, 0x1F1F8) // US flag
-  if (name.includes('veteran')) return String.fromCodePoint(0x1F396) // Military medal
-  if (name.includes('columbus') || name.includes('indigenous')) return String.fromCodePoint(0x1F30E) // Globe
-  if (name.includes('easter')) return String.fromCodePoint(0x1F430) // Rabbit
-  if (name.includes('snow') || name.includes('winter')) return String.fromCodePoint(0x2744) // Snowflake
+  if (name.includes('christmas')) return String.fromCodePoint(0x1F384)
+  if (name.includes('new year')) return String.fromCodePoint(0x1F389)
+  if (name.includes('thanksgiving')) return String.fromCodePoint(0x1F983)
+  if (name.includes('independence') || name.includes('july 4')) return String.fromCodePoint(0x1F386)
+  if (name.includes('memorial')) return String.fromCodePoint(0x1F1FA, 0x1F1F8)
+  if (name.includes('labor')) return String.fromCodePoint(0x1F477)
+  if (name.includes('mlk') || name.includes('martin luther king')) return String.fromCodePoint(0x270A)
+  if (name.includes('president')) return String.fromCodePoint(0x1F1FA, 0x1F1F8)
+  if (name.includes('veteran')) return String.fromCodePoint(0x1F396)
+  if (name.includes('columbus') || name.includes('indigenous')) return String.fromCodePoint(0x1F30E)
+  if (name.includes('easter')) return String.fromCodePoint(0x1F430)
+  if (name.includes('snow') || name.includes('winter')) return String.fromCodePoint(0x2744)
 
-  // Default car emoji
   return String.fromCodePoint(0x1F697)
 }
 

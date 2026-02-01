@@ -1,6 +1,6 @@
 // Email Templates for CityPing
-// Personality: Your parking buddy — a friend who's got your back on NYC streets
-// See: docs/PARKPING_TONE_GUIDE.md
+// Professional, clear, actionable — respect the reader's time
+// Design principles: Clarity > cleverness, context > content
 
 import type { MonthlyInsights } from './monthly-insights'
 
@@ -25,74 +25,62 @@ const buttonStyle = `
 // --- Copy Variation Helpers ---
 
 function getGoodNewsLine(holidayName: string, consecutiveDays?: number): string {
-  // Holiday-specific greetings
+  // Holiday-specific greetings - single emoji, professional
   const lower = holidayName.toLowerCase()
 
-  if (lower.includes('christmas')) return '🎄 Happy holidays!'
-  if (lower.includes('new year') && lower.includes('eve')) return '🎉 Ring in the new year!'
-  if (lower.includes('new year')) return '🎉 Happy New Year!'
-  if (lower.includes('thanksgiving')) return '🦃 Happy Thanksgiving!'
-  if (lower.includes('lunar new year')) return '🧧 新年快乐!'
-  if (lower.includes('independence') || lower.includes('july 4')) return '🇺🇸 Happy 4th!'
-  if (lower.includes('passover')) return '✡️ Chag Sameach!'
-  if (lower.includes('easter') || lower.includes('good friday') || lower.includes('holy thursday')) return '🐣 Happy Easter weekend!'
-  if (lower.includes('eid') || lower.includes('idul')) return '🌙 Eid Mubarak!'
-  if (lower.includes('diwali')) return '🪔 Happy Diwali!'
+  if (lower.includes('christmas')) return 'Happy holidays'
+  if (lower.includes('new year') && lower.includes('eve')) return 'New Year\'s Eve'
+  if (lower.includes('new year')) return 'Happy New Year'
+  if (lower.includes('thanksgiving')) return 'Happy Thanksgiving'
+  if (lower.includes('lunar new year')) return 'Lunar New Year'
+  if (lower.includes('independence') || lower.includes('july 4')) return 'Independence Day'
+  if (lower.includes('passover')) return 'Passover'
+  if (lower.includes('easter') || lower.includes('good friday') || lower.includes('holy thursday')) return 'Easter weekend'
+  if (lower.includes('eid') || lower.includes('idul')) return 'Eid Mubarak'
+  if (lower.includes('diwali')) return 'Happy Diwali'
 
-  // Consecutive days messaging
-  if (consecutiveDays && consecutiveDays >= 4) return '🎉 Extended break!'
-  if (consecutiveDays && consecutiveDays >= 2) return '🎉 Back-to-back!'
+  // Consecutive days messaging - clear, not celebratory
+  if (consecutiveDays && consecutiveDays >= 4) return `${consecutiveDays}-day suspension period`
+  if (consecutiveDays && consecutiveDays >= 2) return `${consecutiveDays} consecutive days`
 
-  // Default variations (rotate based on day of month)
-  const variations = [
-    '🎉 Good news!',
-    '🎉 You\'re in luck!',
-    '🎉 Heads up!',
-    '🎉 Quick heads up!',
-  ]
-  const dayOfMonth = new Date().getDate()
-  return variations[dayOfMonth % variations.length]
+  return 'ASP suspended'
 }
 
 function getActionLine(consecutiveDays?: number): { html: string; text: string } {
   if (consecutiveDays && consecutiveDays >= 4) {
     return {
-      html: `Park it and forget it — <strong>${consecutiveDays} days</strong> of freedom ahead.`,
-      text: `Park it and forget it — ${consecutiveDays} days of freedom ahead.`
+      html: `ASP is suspended for <strong>${consecutiveDays} consecutive days</strong>. No need to move your car.`,
+      text: `ASP is suspended for ${consecutiveDays} consecutive days. No need to move your car.`
     }
   }
   if (consecutiveDays && consecutiveDays >= 2) {
     return {
-      html: `Leave it where it is. You've got <strong>${consecutiveDays} days</strong>.`,
-      text: `Leave it where it is. You've got ${consecutiveDays} days.`
+      html: `ASP is suspended for <strong>${consecutiveDays} days</strong>. Your car can stay parked.`,
+      text: `ASP is suspended for ${consecutiveDays} days. Your car can stay parked.`
     }
   }
 
-  // Default variations
-  const variations = [
-    { html: 'No need to move your car tonight. Sleep in! 😴', text: 'No need to move your car tonight. Sleep in!' },
-    { html: 'Your car can stay put tonight. 😴', text: 'Your car can stay put tonight.' },
-    { html: 'Skip the shuffle tonight. 😴', text: 'Skip the shuffle tonight.' },
-    { html: 'Leave it where it is. One less thing to worry about.', text: 'Leave it where it is. One less thing to worry about.' },
-  ]
-  const dayOfMonth = new Date().getDate()
-  return variations[dayOfMonth % variations.length]
+  // Default - clear, actionable
+  return {
+    html: 'No need to move your car. ASP is suspended.',
+    text: 'No need to move your car. ASP is suspended.'
+  }
 }
 
 function getWeeklyIntro(count: number): string {
-  if (count >= 5) return `Big week ahead — <strong>${count} days</strong> where your car can stay put:`
-  if (count >= 3) return `Solid week coming up — <strong>${count} days</strong> off from the shuffle:`
-  if (count === 2) return `<strong>2 days</strong> this week where you won't need to move:`
-  return `Just <strong>1 day</strong> this week, but hey — it counts:`
+  if (count >= 5) return `${count} ASP suspension days this week:`
+  if (count >= 3) return `${count} days this week with ASP suspended:`
+  if (count === 2) return `2 ASP suspension days this week:`
+  return `1 ASP suspension day this week:`
 }
 
 function getMonthlyIntro(count: number, monthName: string): string {
-  if (count >= 8) return `Big month for parking freedom — <strong>${count} suspension days</strong> ahead.`
-  if (count >= 5) return `Solid month coming up — <strong>${count} days</strong> where your car can stay put.`
-  if (count >= 3) return `<strong>${count} suspension days</strong> this month. Here's the breakdown.`
-  if (count === 2) return `Quiet month. Just <strong>2 days</strong> to note.`
-  if (count === 1) return `Light month — only <strong>1 suspension day</strong> in ${monthName}.`
-  return `No suspensions scheduled for ${monthName}. Regular ASP rules apply.`
+  if (count >= 8) return `${count} ASP suspension days in ${monthName}.`
+  if (count >= 5) return `${count} ASP suspension days this month.`
+  if (count >= 3) return `${count} suspension days in ${monthName}.`
+  if (count === 2) return `2 suspension days in ${monthName}.`
+  if (count === 1) return `1 suspension day in ${monthName}.`
+  return `No suspensions scheduled for ${monthName}.`
 }
 
 // --- Email Templates ---
@@ -131,49 +119,56 @@ Manage preferences: ${manageUrl}
 
   // Welcome email after signup (legacy - use welcomeWithWeekAhead instead)
   welcome: (manageUrl: string) => ({
-    subject: 'Welcome to CityPing 🚗',
+    subject: 'CityPing: Your ASP alerts are active',
     html: `
       <div style="${baseStyle}">
-        <h1 style="color: #1e3a5f; margin-bottom: 24px;">You're in.</h1>
+        <h1 style="color: #1e3a5f; margin-bottom: 24px; font-weight: 600;">
+          Your parking alerts are ready
+        </h1>
 
-        <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px;">
-          No more guessing. No more tickets. We'll let you know when you can skip the shuffle.
+        <p style="font-size: 17px; line-height: 1.6; margin-bottom: 24px; color: #334155;">
+          We'll notify you the evening before every ASP suspension. One email or text—clear, timely, and actionable.
         </p>
 
-        <div style="background: #f8fafc; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
-          <p style="font-size: 16px; line-height: 1.6; margin: 0;">
-            <strong>Here's the deal:</strong><br />
-            The evening before ASP is suspended, you'll get an email (and/or text).
-            That's it. No spam, no fluff.
+        <div style="background: #f8fafc; border-radius: 8px; padding: 20px; margin-bottom: 24px; border-left: 3px solid #1e3a5f;">
+          <p style="font-size: 15px; line-height: 1.6; margin: 0; color: #475569;">
+            <strong>What to expect:</strong><br/>
+            • Alerts sent by 8 PM the night before<br/>
+            • Only when ASP is suspended<br/>
+            • Includes reason and any meter changes
           </p>
         </div>
 
         <p style="margin: 32px 0;">
-          <a href="${manageUrl}" style="${buttonStyle}">View Your Settings</a>
+          <a href="${manageUrl}" style="${buttonStyle}">Review Settings</a>
         </p>
 
         <p style="font-size: 14px; color: #64748b;">
-          Questions? Just reply to this email.
+          Questions? Reply to this email.
         </p>
 
         <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 32px 0;" />
 
         <p style="font-size: 12px; color: #94a3b8;">
-          CityPing · NYC Parking Alerts
+          CityPing · NYC Alternate Side Parking Alerts
         </p>
       </div>
     `,
-    text: `You're in.
+    text: `Your parking alerts are ready
 
-No more guessing. No more tickets. We'll let you know when you can skip the shuffle.
+We'll notify you the evening before every ASP suspension. One email or text—clear, timely, and actionable.
 
-Here's the deal:
-The evening before ASP is suspended, you'll get an email (and/or text). That's it. No spam, no fluff.
+What to expect:
+• Alerts sent by 8 PM the night before
+• Only when ASP is suspended
+• Includes reason and any meter changes
 
-View your settings: ${manageUrl}
+Review settings: ${manageUrl}
 
-Questions? Just reply to this email.
-`,
+Questions? Reply to this email.
+
+---
+CityPing · NYC Alternate Side Parking Alerts`,
   }),
 
   // Combined welcome + week ahead email for new signups
@@ -189,30 +184,33 @@ Questions? Just reply to this email.
 
     return {
       subject: hasSuspensions
-        ? `Welcome to CityPing 🚗 — ${suspensions.length} Day${suspensions.length !== 1 ? 's' : ''} Off This Week`
-        : 'Welcome to CityPing 🚗 — Your Week Ahead',
+        ? `CityPing: ${suspensions.length} ASP suspension day${suspensions.length !== 1 ? 's' : ''} this week`
+        : 'CityPing: Your week ahead',
       html: `
         <div style="${baseStyle}">
           <!-- Welcome Section -->
           <div style="background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); border-radius: 12px; padding: 32px; margin-bottom: 24px; color: white;">
-            <h1 style="margin: 0 0 8px 0; font-size: 28px; font-weight: 700;">
-              You're in. 🚗
+            <h1 style="margin: 0 0 8px 0; font-size: 28px; font-weight: 600;">
+              Your alerts are active
             </h1>
-            <p style="margin: 0; font-size: 18px; opacity: 0.9;">
-              No more guessing. No more tickets.
+            <p style="margin: 0; font-size: 17px; opacity: 0.9;">
+              Clear, timely ASP notifications for NYC
             </p>
           </div>
 
-          <div style="background: #f8fafc; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
-            <p style="font-size: 16px; line-height: 1.6; margin: 0;">
-              <strong>Here's the deal:</strong> The evening before ASP is suspended, you'll get an email (and/or text). That's it. No spam, no fluff.
+          <div style="background: #f8fafc; border-radius: 8px; padding: 20px; margin-bottom: 24px; border-left: 3px solid #1e3a5f;">
+            <p style="font-size: 15px; line-height: 1.6; margin: 0; color: #475569;">
+              <strong>What to expect:</strong><br/>
+              • Alerts sent by 8 PM the night before each suspension<br/>
+              • Includes reason and any meter/school changes<br/>
+              • No spam—only when ASP is suspended
             </p>
           </div>
 
           <!-- Week Ahead Section -->
           <div style="background: #eff6ff; border-radius: 8px; padding: 24px; margin-bottom: 24px;">
-            <h2 style="color: #1e40af; margin: 0 0 8px 0; font-size: 20px;">
-              📅 Week Ahead
+            <h2 style="color: #1e40af; margin: 0 0 8px 0; font-size: 18px; font-weight: 600;">
+              Week Ahead
             </h2>
             <p style="font-size: 14px; margin: 0; color: #1e40af;">
               ${weekRange}
@@ -220,30 +218,30 @@ Questions? Just reply to this email.
           </div>
 
           ${hasSuspensions ? `
-            <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px;">
+            <p style="font-size: 16px; line-height: 1.6; margin-bottom: 20px; color: #334155;">
               ${intro}
             </p>
 
             ${suspensions.map((s, i) => `
               <div style="background: ${i % 2 === 0 ? '#f0fdf4' : '#ffffff'}; border-radius: 8px; padding: 16px; margin-bottom: 12px; border: 1px solid #e2e8f0;">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                  <span style="font-weight: 600; color: #166534; font-size: 16px;">${s.dayOfWeek}, ${s.date}</span>
+                  <span style="font-weight: 600; color: #166534; font-size: 15px;">${s.dayOfWeek}, ${s.date}</span>
                 </div>
-                <div style="font-size: 15px; color: #1e3a5f; margin-bottom: 8px;">
+                <div style="font-size: 14px; color: #1e3a5f; margin-bottom: 8px;">
                   <strong>${s.summary}</strong>
                 </div>
                 <div style="font-size: 13px; color: #64748b; display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px;">
-                  <span>🚗 ASP: <strong style="color: #166534;">Suspended</strong></span>
-                  <span>🅿️ Meters: <strong style="color: ${s.meters === 'Suspended' ? '#166534' : '#dc2626'};">${s.meters || 'In Effect'}</strong></span>
-                  <span>🗑️ Trash: <strong style="color: ${s.trash === 'Suspended' ? '#166534' : '#64748b'};">${s.trash || 'Normal'}</strong></span>
-                  <span>🏫 Schools: <strong style="color: ${s.schools === 'Closed' ? '#166534' : '#64748b'};">${s.schools || 'Open'}</strong></span>
+                  <span>ASP: <strong style="color: #166534;">Suspended</strong></span>
+                  <span>Meters: <strong style="color: ${s.meters === 'Suspended' ? '#166534' : '#dc2626'};">${s.meters || 'In Effect'}</strong></span>
+                  <span>Trash: <strong style="color: ${s.trash === 'Suspended' ? '#166534' : '#64748b'};">${s.trash || 'Normal'}</strong></span>
+                  <span>Schools: <strong style="color: ${s.schools === 'Closed' ? '#166534' : '#64748b'};">${s.schools || 'Open'}</strong></span>
                 </div>
               </div>
             `).join('')}
           ` : `
             <div style="background: #f8fafc; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
-              <p style="margin: 0; color: #64748b; font-size: 16px;">
-                📋 Regular week ahead — ASP and trash collection are on normal schedule.
+              <p style="margin: 0; color: #64748b; font-size: 15px;">
+                Regular week ahead — ASP and trash collection on normal schedule.
               </p>
             </div>
           `}
@@ -251,43 +249,46 @@ Questions? Just reply to this email.
           ${subwayAlertsHtml || ''}
 
           <p style="font-size: 14px; color: #64748b; background: #f8fafc; padding: 12px; border-radius: 6px; margin-top: 24px;">
-            We'll remind you the evening before each suspension.
+            We will remind you the evening before each suspension.
           </p>
 
           <p style="margin: 32px 0;">
-            <a href="${manageUrl}" style="${buttonStyle}">Manage Your Alerts</a>
+            <a href="${manageUrl}" style="${buttonStyle}">Manage Alerts</a>
           </p>
 
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 32px 0;" />
 
           <p style="font-size: 14px; color: #64748b; text-align: center;">
-            Questions? Just reply to this email.<br />
+            Questions? Reply to this email.<br />
             <a href="${manageUrl}" style="color: #1e3a5f;">Manage preferences</a> ·
             <a href="https://cityping.net" style="color: #1e3a5f;">cityping.net</a>
           </p>
         </div>
       `,
-      text: `YOU'RE IN! 🚗
+      text: `CityPing: Your alerts are active
 
-No more guessing. No more tickets. We'll let you know when you can skip the shuffle.
+Clear, timely ASP notifications for NYC.
 
-Here's the deal: The evening before ASP is suspended, you'll get an email (and/or text). That's it. No spam, no fluff.
+What to expect:
+• Alerts sent by 8 PM the night before each suspension
+• Includes reason and any meter/school changes
+• No spam—only when ASP is suspended
 
 ---
 
-📅 WEEK AHEAD: ${weekRange}
+WEEK AHEAD: ${weekRange}
 
-${hasSuspensions ? `${suspensions.length} day${suspensions.length !== 1 ? 's' : ''} this week where you can skip the shuffle:
+${hasSuspensions ? `${intro}
 
 ${suspensions.map(s => `• ${s.dayOfWeek}, ${s.date} — ${s.summary}
-  🚗 ASP: Suspended | 🅿️ Meters: ${s.meters || 'In Effect'} | 🗑️ Trash: ${s.trash || 'Normal'} | 🏫 Schools: ${s.schools || 'Open'}`).join('\n\n')}` : 'Regular week ahead — ASP and trash collection are on normal schedule.'}
+  ASP: Suspended | Meters: ${s.meters || 'In Effect'} | Trash: ${s.trash || 'Normal'} | Schools: ${s.schools || 'Open'}`).join('\n\n')}` : 'Regular week ahead — ASP and trash collection on normal schedule.'}
 
 ${subwayAlertsText || ''}
-We'll remind you the evening before each suspension.
+We will remind you the evening before each suspension.
 
 ---
-Manage your alerts: ${manageUrl}
-Questions? Just reply to this email.
+Manage alerts: ${manageUrl}
+Questions? Reply to this email.
 `,
     }
   },
@@ -306,33 +307,39 @@ Questions? Just reply to this email.
     const actionLine = getActionLine(consecutiveDays)
 
     return {
-      subject: `🚗 ASP Suspended Tomorrow — ${holidayName}`,
+      subject: `ASP Suspended: ${holidayName} (${date})`,
       html: `
         <div style="${baseStyle}">
-          <div style="background: #f0fdf4; border-radius: 8px; padding: 24px; margin-bottom: 24px;">
-            <h1 style="color: #166534; margin: 0 0 8px 0; font-size: 24px;">
+          <div style="background: #f0fdf4; border-radius: 8px; padding: 24px; margin-bottom: 24px; border-left: 4px solid #166534;">
+            <h1 style="color: #166534; margin: 0 0 8px 0; font-size: 22px; font-weight: 600;">
               ${goodNews}
             </h1>
-            <p style="font-size: 18px; margin: 0; color: #166534;">
-              Alternate side parking is <strong>suspended</strong> tomorrow.
+            <p style="font-size: 16px; margin: 0; color: #166534;">
+              Alternate side parking is suspended tomorrow.
             </p>
           </div>
 
-          <p style="font-size: 16px; line-height: 1.6;">
-            <strong>Tomorrow:</strong> ${date}<br />
-            <strong>Reason:</strong> ${holidayName}
-          </p>
+          <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+            <p style="font-size: 15px; line-height: 1.6; margin: 0 0 8px 0; color: #1e3a5f;">
+              <strong>Date:</strong> ${date}
+            </p>
+            <p style="font-size: 15px; line-height: 1.6; margin: 0; color: #1e3a5f;">
+              <strong>Reason:</strong> ${holidayName}
+            </p>
+          </div>
 
-          <p style="font-size: 18px; line-height: 1.6; background: #fef3c7; padding: 16px; border-radius: 8px;">
-            ${actionLine.html}
-          </p>
+          <div style="background: #fef3c7; border-radius: 8px; padding: 16px; margin: 20px 0; border-left: 3px solid #d97706;">
+            <p style="font-size: 16px; line-height: 1.6; margin: 0; color: #92400e;">
+              ${actionLine.html}
+            </p>
+          </div>
 
           ${tipsHtml || ''}
 
           ${upcomingDays && upcomingDays.length > 0 ? `
           <div style="background: #f8fafc; border-radius: 8px; padding: 20px; margin: 24px 0;">
-            <h3 style="margin: 0 0 12px 0; color: #1e3a5f; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
-              📅 Coming Up
+            <h3 style="margin: 0 0 12px 0; color: #1e3a5f; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+              Coming Up
             </h3>
             ${upcomingDays.map(d => `
               <p style="margin: 8px 0; color: #475569; font-size: 15px;">
@@ -345,19 +352,19 @@ Questions? Just reply to this email.
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 32px 0;" />
 
           <p style="font-size: 14px; color: #64748b;">
-            <a href="${manageUrl}" style="color: #1e3a5f;">Manage preferences</a> ·
-            <a href="https://cityping.net" style="color: #1e3a5f;">cityping.net</a>
+            <a href="${manageUrl}" style="color: #1e3a5f; text-decoration: underline;">Manage preferences</a> ·
+            <a href="https://cityping.net" style="color: #1e3a5f; text-decoration: underline;">cityping.net</a>
           </p>
         </div>
       `,
-      text: `${goodNews} Alternate side parking is suspended tomorrow.
+      text: `${goodNews}. Alternate side parking is suspended tomorrow.
 
-Tomorrow: ${date}
+Date: ${date}
 Reason: ${holidayName}
 
 ${actionLine.text}${tipsText || ''}
 ${upcomingDays && upcomingDays.length > 0 ? `
-📅 COMING UP
+COMING UP
 ${upcomingDays.map(d => `• ${d.date} — ${d.summary}`).join('\n')}
 ` : ''}
 ---
@@ -375,59 +382,59 @@ Manage preferences: ${manageUrl}
     const intro = getWeeklyIntro(suspensions.length)
 
     return {
-      subject: `📅 This Week: ${suspensions.length} Day${suspensions.length !== 1 ? 's' : ''} You Can Skip the Shuffle`,
+      subject: `Week ahead: ${suspensions.length} ASP suspension day${suspensions.length !== 1 ? 's' : ''}`,
       html: `
         <div style="${baseStyle}">
           <div style="background: #eff6ff; border-radius: 8px; padding: 24px; margin-bottom: 24px;">
-            <h1 style="color: #1e40af; margin: 0 0 8px 0; font-size: 24px;">
+            <h1 style="color: #1e40af; margin: 0 0 8px 0; font-size: 22px; font-weight: 600;">
               Week Ahead
             </h1>
-            <p style="font-size: 16px; margin: 0; color: #1e40af;">
+            <p style="font-size: 15px; margin: 0; color: #1e40af;">
               ${weekRange}
             </p>
           </div>
 
-          <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px;">
+          <p style="font-size: 16px; line-height: 1.6; margin-bottom: 20px; color: #334155;">
             ${intro}
           </p>
 
           ${suspensions.map((s, i) => `
             <div style="background: ${i % 2 === 0 ? '#f0fdf4' : '#ffffff'}; border-radius: 8px; padding: 16px; margin-bottom: 12px; border: 1px solid #e2e8f0;">
               <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <span style="font-weight: 600; color: #166534; font-size: 16px;">${s.dayOfWeek}, ${s.date}</span>
+                <span style="font-weight: 600; color: #166534; font-size: 15px;">${s.dayOfWeek}, ${s.date}</span>
               </div>
-              <div style="font-size: 15px; color: #1e3a5f; margin-bottom: 8px;">
+              <div style="font-size: 14px; color: #1e3a5f; margin-bottom: 8px;">
                 <strong>${s.summary}</strong>
               </div>
               <div style="font-size: 13px; color: #64748b; display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px;">
-                <span>🚗 ASP: <strong style="color: #166534;">Suspended</strong></span>
-                <span>🅿️ Meters: <strong style="color: ${s.meters === 'Suspended' ? '#166534' : '#dc2626'};">${s.meters || 'In Effect'}</strong></span>
-                <span>🗑️ Trash: <strong style="color: ${s.trash === 'Suspended' ? '#166534' : '#64748b'};">${s.trash || 'Normal'}</strong></span>
-                <span>🏫 Schools: <strong style="color: ${s.schools === 'Closed' ? '#166534' : '#64748b'};">${s.schools || 'Open'}</strong></span>
+                <span>ASP: <strong style="color: #166534;">Suspended</strong></span>
+                <span>Meters: <strong style="color: ${s.meters === 'Suspended' ? '#166534' : '#dc2626'};">${s.meters || 'In Effect'}</strong></span>
+                <span>Trash: <strong style="color: ${s.trash === 'Suspended' ? '#166534' : '#64748b'};">${s.trash || 'Normal'}</strong></span>
+                <span>Schools: <strong style="color: ${s.schools === 'Closed' ? '#166534' : '#64748b'};">${s.schools || 'Open'}</strong></span>
               </div>
             </div>
           `).join('')}
 
           <p style="font-size: 14px; color: #64748b; background: #f8fafc; padding: 12px; border-radius: 6px; margin-top: 24px;">
-            We'll remind you the evening before each.
+            We will remind you the evening before each suspension.
           </p>
 
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 32px 0;" />
 
           <p style="font-size: 14px; color: #64748b;">
-            <a href="${manageUrl}" style="color: #1e3a5f;">Manage preferences</a> ·
-            <a href="https://cityping.net" style="color: #1e3a5f;">cityping.net</a>
+            <a href="${manageUrl}" style="color: #1e3a5f; text-decoration: underline;">Manage preferences</a> ·
+            <a href="https://cityping.net" style="color: #1e3a5f; text-decoration: underline;">cityping.net</a>
           </p>
         </div>
       `,
-      text: `WEEK AHEAD: ${weekRange}
+      text: `Week ahead: ${weekRange}
 
-${suspensions.length} day${suspensions.length !== 1 ? 's' : ''} this week where you can skip the shuffle:
+${intro}
 
 ${suspensions.map(s => `• ${s.dayOfWeek}, ${s.date} — ${s.summary}
-  🚗 ASP: Suspended | 🅿️ Meters: ${s.meters || 'In Effect'} | 🗑️ Trash: ${s.trash || 'Normal'} | 🏫 Schools: ${s.schools || 'Open'}`).join('\n\n')}
+  ASP: Suspended | Meters: ${s.meters || 'In Effect'} | Trash: ${s.trash || 'Normal'} | Schools: ${s.schools || 'Open'}`).join('\n\n')}
 
-We'll remind you the evening before each.
+We will remind you the evening before each suspension.
 
 ---
 Manage preferences: ${manageUrl}
@@ -443,32 +450,32 @@ Manage preferences: ${manageUrl}
     nextMonthPreview: string | null,
     manageUrl: string
   ) => ({
-    subject: `${monthName} Wrapped — ${suspensionCount} Day${suspensionCount !== 1 ? 's' : ''} You Didn't Have to Move`,
+    subject: `${monthName}: ${suspensionCount} ASP suspension day${suspensionCount !== 1 ? 's' : ''}`,
     html: `
       <div style="${baseStyle}">
-        <h1 style="color: #1e3a5f; margin-bottom: 24px;">
-          ${monthName}, done.
+        <h1 style="color: #1e3a5f; margin-bottom: 24px; font-weight: 600;">
+          ${monthName} Summary
         </h1>
 
         <div style="background: #f0fdf4; border-radius: 8px; padding: 24px; margin-bottom: 24px; text-align: center;">
-          <p style="font-size: 56px; margin: 0; color: #166534; font-weight: bold;">
+          <p style="font-size: 48px; margin: 0; color: #166534; font-weight: 600;">
             ${suspensionCount}
           </p>
-          <p style="font-size: 16px; margin: 8px 0 0 0; color: #15803d;">
-            day${suspensionCount !== 1 ? 's' : ''} you didn't have to move your car
+          <p style="font-size: 15px; margin: 8px 0 0 0; color: #15803d;">
+            ASP suspension day${suspensionCount !== 1 ? 's' : ''}
           </p>
         </div>
 
         ${highlights.length > 0 ? `
-          <p style="font-size: 16px; line-height: 1.6;">
-            <strong>Highlights:</strong> ${highlights.join(', ')}
+          <p style="font-size: 15px; line-height: 1.6; color: #334155;">
+            <strong>Notable:</strong> ${highlights.join(', ')}
           </p>
         ` : ''}
 
         ${nextMonthPreview ? `
           <div style="background: #eff6ff; padding: 16px; border-radius: 8px; margin-top: 24px;">
-            <p style="font-size: 16px; line-height: 1.6; margin: 0;">
-              <strong>Up next:</strong> ${nextMonthPreview}
+            <p style="font-size: 15px; line-height: 1.6; margin: 0; color: #334155;">
+              <strong>Next month:</strong> ${nextMonthPreview}
             </p>
           </div>
         ` : ''}
@@ -476,16 +483,16 @@ Manage preferences: ${manageUrl}
         <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 32px 0;" />
 
         <p style="font-size: 14px; color: #64748b;">
-          <a href="${manageUrl}" style="color: #1e3a5f;">Manage preferences</a> ·
-          <a href="https://cityping.net" style="color: #1e3a5f;">cityping.net</a>
+          <a href="${manageUrl}" style="color: #1e3a5f; text-decoration: underline;">Manage preferences</a> ·
+          <a href="https://cityping.net" style="color: #1e3a5f; text-decoration: underline;">cityping.net</a>
         </p>
       </div>
     `,
-    text: `${monthName}, done.
+    text: `${monthName} Summary
 
-${suspensionCount} day${suspensionCount !== 1 ? 's' : ''} you didn't have to move your car.
-${highlights.length > 0 ? `\nHighlights: ${highlights.join(', ')}` : ''}
-${nextMonthPreview ? `\nUp next: ${nextMonthPreview}` : ''}
+${suspensionCount} ASP suspension day${suspensionCount !== 1 ? 's' : ''}.
+${highlights.length > 0 ? `\nNotable: ${highlights.join(', ')}` : ''}
+${nextMonthPreview ? `\nNext month: ${nextMonthPreview}` : ''}
 
 ---
 Manage preferences: ${manageUrl}

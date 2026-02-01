@@ -423,7 +423,7 @@ export const DEFAULT_SELECTION_CONFIG: SelectionConfigV2 = {
   maxAlerts: 3,
   maxDeals: 3,
   maxEvents: 4,
-  minQualityScore: 40,
+  minQualityScore: 55, // Increased from 40 to reduce noise
   lookbackHours: 48,
   categories: null,
 };
