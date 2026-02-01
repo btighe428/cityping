@@ -21,6 +21,7 @@ import {
   type NewsSource,
 } from "./sources";
 import { DateTime } from "luxon";
+import { normalizeUrl, checkCrossSourceDuplicate } from "../../dedup/cross-source-dedup";
 
 // =============================================================================
 // TYPES
@@ -259,38 +260,77 @@ async function scrapeSingleSource(source: NewsSource): Promise<ScrapeResult> {
       .filter((a): a is ScrapedArticle => a !== null)
       .slice(0, CONFIG.maxArticlesPerSource);
 
-    // Upsert to database
+    // Upsert to database with cross-source deduplication
     for (const article of articles) {
       try {
-        const existing = await prisma.newsArticle.findUnique({
+        // First check for cross-source duplicates (same story from different sources)
+        const dupCheck = await checkCrossSourceDuplicate({
+          title: article.title,
+          url: article.url,
+          source: article.sourceId,
+          snippet: article.snippet,
+          externalId: article.externalId,
+        }, {
+          lookbackHours: 48,
+          titleThreshold: 0.75,
+        });
+
+        if (dupCheck.isDuplicate) {
+          console.log(`[MultiSource:${source.id}] Cross-source duplicate: "${article.title.substring(0, 50)}..." matches ${dupCheck.existingSource} (${dupCheck.matchMethod})`);
+          articlesSkipped++;
+          continue;
+        }
+
+        // Use atomic upsert to prevent race conditions
+        const result = await prisma.newsArticle.upsert({
           where: {
             source_externalId: {
               source: article.sourceId,
               externalId: article.externalId,
             },
           },
+          update: {
+            // Update fields if content changed (handles updates)
+            title: article.title,
+            snippet: article.snippet,
+            url: article.url,
+            // normalizedUrl: normalizeUrl(article.url), // TODO: Add after schema migration
+            category: article.category,
+            author: article.author,
+            imageUrl: article.imageUrl,
+          },
+          create: {
+            source: article.sourceId,
+            externalId: article.externalId,
+            url: article.url,
+            // normalizedUrl: normalizeUrl(article.url), // TODO: Add after schema migration
+            title: article.title,
+            snippet: article.snippet,
+            publishedAt: article.publishedAt,
+            category: article.category,
+            author: article.author,
+            imageUrl: article.imageUrl,
+          },
+          select: {
+            id: true,
+            createdAt: true,
+          },
         });
 
-        if (existing) {
-          articlesSkipped++;
-        } else {
-          await prisma.newsArticle.create({
-            data: {
-              source: article.sourceId,
-              externalId: article.externalId,
-              url: article.url,
-              title: article.title,
-              snippet: article.snippet,
-              publishedAt: article.publishedAt,
-              category: article.category,
-              author: article.author,
-              imageUrl: article.imageUrl,
-            },
-          });
+        // Check if this is newly created by comparing ID to a follow-up check
+        // (upsert doesn't return whether it was insert or update)
+        // Use a simple heuristic: if createdAt is within last second, it's new
+        const isNewlyCreated = (Date.now() - result.createdAt.getTime()) < 2000;
+        if (isNewlyCreated) {
           articlesCreated++;
+        } else {
+          // Article was updated (content changed)
+          articlesSkipped++;
         }
       } catch (dbError) {
-        // Likely duplicate key race condition - skip
+        const errorMsg = dbError instanceof Error ? dbError.message : String(dbError);
+        console.warn(`[MultiSource:${source.id}] Database error for "${article.title.substring(0, 50)}...": ${errorMsg}`);
+        errors.push(`DB error: ${errorMsg}`);
         articlesSkipped++;
       }
     }

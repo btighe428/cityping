@@ -279,6 +279,7 @@ model User {
   feedback          UserEventFeedback[]
   referralsSent     Referral[]             @relation("ReferralsSent")
   referralsReceived Referral[]             @relation("ReferralsReceived")
+  deliveryPrefs     UserDeliveryPreference?
 
   @@map("users")
 }
@@ -321,6 +322,31 @@ model UserModulePreference {
 
   @@unique([userId, moduleId])
   @@map("user_module_preferences")
+}
+
+/// User preferences for time-slot email delivery (9am/noon/7pm).
+/// Enables per-user customization of email timing.
+/// Free tier defaults to morning only; Premium can opt into all slots.
+model UserDeliveryPreference {
+  id                String   @id @default(cuid())
+  userId            String   @unique @map("user_id")
+
+  // Time slot preferences
+  morningEnabled    Boolean  @default(true) @map("morning_enabled")
+  noonEnabled       Boolean  @default(false) @map("noon_enabled")
+  eveningEnabled    Boolean  @default(false) @map("evening_enabled")
+
+  // Quiet hours (optional custom quiet period)
+  quietHoursStart   Int?     @map("quiet_hours_start") // 0-23
+  quietHoursEnd     Int?     @map("quiet_hours_end")   // 0-23
+  timezone          String   @default("America/New_York")
+
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_delivery_preferences")
 }
 
 /// An individual data source within a module that generates alerts.
@@ -882,4 +908,78 @@ model ParkEvent {
   @@index([borough])
   @@index([category])
   @@map("park_events")
+}
+
+// ============================================================================
+// EMAIL OUTBOX - Idempotency and Tracking for Email Delivery
+// ============================================================================
+
+/// Email types for categorization and deduplication
+enum EmailType {
+  daily_digest
+  daily_pulse
+  weekly_digest
+  day_ahead
+  reminder
+  monthly_recap
+  welcome
+  system
+
+  // Time-slot email system (v2)
+  morning_briefing
+  midday_pulse
+  evening_winddown
+
+  @@map("email_type")
+}
+
+/// Email sending status for tracking delivery
+enum EmailStatus {
+  pending
+  sent
+  failed
+  skipped
+
+  @@map("email_status")
+}
+
+/// Transactional outbox for reliable email delivery.
+/// Implements exactly-once semantics via unique constraint on (recipient, emailType, targetDate).
+/// Prevents duplicate emails when cron jobs overlap or retry.
+model EmailOutbox {
+  id         String     @id @default(cuid())
+  recipient  String     // Email address (normalized to lowercase)
+  emailType  EmailType  @map("email_type")
+  targetDate DateTime   @map("target_date") @db.Date // The date this email is for (not when it was sent)
+  subject    String     // Subject line for reference
+  resendId   String?    @map("resend_id") // Resend message ID for tracking
+  status     EmailStatus @default(pending)
+  errorMessage String?  @map("error_message")
+  metadata   Json       @default("{}") // Flexible storage for job-specific data
+  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  sentAt     DateTime?  @map("sent_at") @db.Timestamptz
+
+  // Unique constraint prevents duplicate emails for same recipient/type/date
+  @@unique([recipient, emailType, targetDate], name: "recipient_emailType_targetDate")
+  @@index([status, targetDate])
+  @@index([emailType, targetDate])
+  @@map("email_outbox")
+}
+
+// ============================================================================
+// JOB LOCK - Distributed Locking to Prevent Concurrent Job Runs
+// ============================================================================
+
+/// Distributed lock for cron jobs to prevent duplicate execution.
+/// When a job starts, it acquires a lock. If another instance tries to run,
+/// it will fail to acquire the lock and exit immediately.
+model JobLock {
+  jobName   String   @id @map("job_name") // Each job can only have one lock
+  lockId    String   @map("lock_id") // Unique identifier for this lock instance
+  acquiredAt DateTime @default(now()) @map("acquired_at") @db.Timestamptz
+  expiresAt DateTime @map("expires_at") @db.Timestamptz // Lock timeout (prevents stuck locks)
+
+  @@index([expiresAt])
+  @@map("job_locks")
 }

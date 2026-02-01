@@ -922,6 +922,15 @@ Preferences: ${appBaseUrl}/preferences
 // =============================================================================
 // CITY PULSE: NYC TODAY (Daily 7am)
 // 60-second scan before leaving home. High signal, zero fluff.
+//
+// INFORMATION ARCHITECTURE (inverted pyramid):
+// 1. BREAKING - Immediate action required (transit outages, severe weather)
+// 2. WEATHER - Today's conditions (affects all other decisions)
+// 3. ESSENTIALS - Transit & parking status (daily commute needs)
+// 4. HEADLINES - Curated NYC news with local angle
+// 5. DON'T MISS - One high-value item with deadline
+// 6. TONIGHT - Evening events (if applicable)
+// 7. LOOK AHEAD - Tomorrow + day after weather
 // =============================================================================
 
 export interface NYCTodayEvent {
@@ -930,6 +939,8 @@ export interface NYCTodayEvent {
   description?: string;
   time?: string;
   category: string;
+  /** Module ID for grouping: transit, parking, weather, events, housing, deals */
+  moduleId?: string;
   isUrgent?: boolean;
   isFree?: boolean;
   price?: string;
@@ -943,6 +954,8 @@ export interface NYCTodayNewsItem {
   nycAngle?: string;
   source: string;
   url: string;
+  /** Category for visual grouping: breaking, essential, local, civic, culture */
+  category?: "breaking" | "essential" | "local" | "civic" | "culture";
 }
 
 export interface NYCTodayData {
@@ -952,15 +965,37 @@ export interface NYCTodayData {
     low: number;
     icon: string;
     summary: string;
+    /** Precipitation probability for planning */
+    precipChance?: number;
+    /** Severe weather alert if applicable */
+    alert?: string;
   };
-  news?: NYCTodayNewsItem[]; // AI-curated top 3 NYC news stories
-  whatMattersToday: NYCTodayEvent[]; // Transit, parking, urgent items
+  /** BREAKING: Immediate action items (transit outages, severe weather, emergencies) */
+  breaking?: NYCTodayEvent[];
+  /** HEADLINES: Curated NYC news stories, grouped by importance */
+  news?: NYCTodayNewsItem[];
+  /**
+   * ESSENTIALS: Daily must-knows grouped by module
+   * - Transit: Service changes, delays
+   * - Parking: ASP rules, suspensions
+   * - Other urgent but not breaking items
+   */
+  essentials?: {
+    transit?: NYCTodayEvent[];
+    parking?: NYCTodayEvent[];
+    other?: NYCTodayEvent[];
+  };
+  /** DON'T MISS: Single high-value item with deadline or strong urgency */
   dontMiss?: {
     title: string;
     description: string;
     ctaUrl?: string;
+    /** Module icon for visual consistency */
+    moduleIcon?: string;
   };
-  tonightInNYC: NYCTodayEvent[];
+  /** TONIGHT: Evening events (5pm or later) */
+  tonightInNYC?: NYCTodayEvent[];
+  /** LOOK AHEAD: Weather forecast for next 2 days */
   lookAhead: {
     day: string;
     forecast: string;
@@ -972,8 +1007,18 @@ export interface NYCTodayData {
   };
 }
 
+/** Module display configuration for consistent rendering */
+const MODULE_DISPLAY: Record<string, { icon: string; label: string; color: string }> = {
+  transit: { icon: "🚇", label: "Transit", color: "#f59e0b" },
+  parking: { icon: "🚗", label: "Parking", color: "#16a34a" },
+  weather: { icon: "🌤️", label: "Weather", color: "#3b82f6" },
+  events: { icon: "🎭", label: "Events", color: "#8b5cf6" },
+  housing: { icon: "🏠", label: "Housing", color: "#ec4899" },
+  deals: { icon: "💰", label: "Deals", color: "#06b6d4" },
+};
+
 export function nycToday(data: NYCTodayData): { subject: string; html: string; text: string } {
-  const { date, weather, news, whatMattersToday, dontMiss, tonightInNYC, lookAhead, user } = data;
+  const { date, weather, breaking, news, essentials, dontMiss, tonightInNYC, lookAhead, user } = data;
 
   const appBaseUrl = process.env.APP_BASE_URL || "https://nycping-app.vercel.app";
 
@@ -989,13 +1034,240 @@ export function nycToday(data: NYCTodayData): { subject: string; html: string; t
     day: "numeric",
   });
 
-  // News section - AI-curated top stories
   const SOURCE_LABELS: Record<string, string> = {
     gothamist: "Gothamist",
     thecity: "THE CITY",
     patch: "Patch",
   };
 
+  // ==========================================================================
+  // 1. BREAKING SECTION - Immediate action required
+  // ==========================================================================
+  const breakingHtml = breaking && breaking.length > 0 ? `
+    <div style="
+      background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+      border-radius: 12px;
+      padding: ${SPACING.md};
+      margin-bottom: ${SPACING.lg};
+      border: 2px solid ${COLORS.urgency.high};
+    ">
+      <h2 style="
+        margin: 0 0 ${SPACING.md} 0;
+        font-size: ${TYPOGRAPHY.sizes.h2};
+        color: ${COLORS.urgency.high};
+        display: flex;
+        align-items: center;
+        gap: ${SPACING.sm};
+      ">🚨 BREAKING</h2>
+      ${breaking.map(event => {
+        const module = event.moduleId ? MODULE_DISPLAY[event.moduleId] : null;
+        return `
+          <div style="
+            background: white;
+            border-radius: 8px;
+            padding: ${SPACING.md};
+            margin-bottom: ${SPACING.sm};
+            border-left: 4px solid ${COLORS.urgency.high};
+          ">
+            <div style="
+              display: flex;
+              align-items: center;
+              gap: ${SPACING.sm};
+              margin-bottom: ${SPACING.xs};
+            ">
+              ${module ? `<span style="font-size: 16px;">${module.icon}</span>` : ''}
+              <span style="
+                font-size: ${TYPOGRAPHY.sizes.h3};
+                font-weight: ${TYPOGRAPHY.weights.semibold};
+                color: ${COLORS.navy[900]};
+              ">${event.title}</span>
+            </div>
+            ${event.description ? `
+              <p style="
+                margin: 0;
+                font-size: ${TYPOGRAPHY.sizes.body};
+                color: ${COLORS.navy[700]};
+                line-height: ${TYPOGRAPHY.lineHeights.relaxed};
+              ">${event.description}</p>
+            ` : ''}
+          </div>
+        `;
+      }).join('')}
+    </div>
+  ` : '';
+
+  // ==========================================================================
+  // 2. WEATHER BAR - Compact, decision-relevant
+  // ==========================================================================
+  const weatherHtml = weather ? `
+    <div style="
+      background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+      border-radius: 8px;
+      padding: ${SPACING.md};
+      margin-bottom: ${SPACING.lg};
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    ">
+      <div style="display: flex; align-items: center; gap: ${SPACING.md};">
+        <span style="font-size: 36px;">${weather.icon}</span>
+        <div>
+          <div style="
+            font-size: ${TYPOGRAPHY.sizes.h2};
+            font-weight: ${TYPOGRAPHY.weights.bold};
+            color: ${COLORS.navy[800]};
+          ">${weather.low}° → ${weather.high}°</div>
+          <div style="
+            font-size: ${TYPOGRAPHY.sizes.body};
+            color: ${COLORS.navy[600]};
+          ">${weather.summary}</div>
+        </div>
+      </div>
+      ${weather.precipChance && weather.precipChance > 30 ? `
+        <div style="
+          background: #dbeafe;
+          padding: ${SPACING.sm} ${SPACING.md};
+          border-radius: 6px;
+          font-size: ${TYPOGRAPHY.sizes.small};
+          color: ${COLORS.navy[700]};
+        ">
+          ☔ ${weather.precipChance}% rain
+        </div>
+      ` : ''}
+      ${weather.alert ? `
+        <div style="
+          background: ${COLORS.urgency.high};
+          color: white;
+          padding: ${SPACING.sm} ${SPACING.md};
+          border-radius: 6px;
+          font-size: ${TYPOGRAPHY.sizes.small};
+          font-weight: ${TYPOGRAPHY.weights.medium};
+        ">
+          ⚠️ ${weather.alert}
+        </div>
+      ` : ''}
+    </div>
+  ` : '';
+
+  // ==========================================================================
+  // 3. ESSENTIALS SECTION - Grouped by module
+  // ==========================================================================
+  const hasEssentials = essentials && (
+    (essentials.transit && essentials.transit.length > 0) ||
+    (essentials.parking && essentials.parking.length > 0) ||
+    (essentials.other && essentials.other.length > 0)
+  );
+
+  const essentialsHtml = hasEssentials ? `
+    <div style="margin-bottom: ${SPACING.lg};">
+      <h2 style="
+        margin: 0 0 ${SPACING.md} 0;
+        font-size: ${TYPOGRAPHY.sizes.h2};
+        color: ${COLORS.navy[800]};
+        padding-bottom: ${SPACING.sm};
+        border-bottom: 2px solid ${COLORS.navy[200]};
+      ">⚡ TODAY'S ESSENTIALS</h2>
+      
+      ${essentials?.transit && essentials.transit.length > 0 ? `
+        <div style="margin-bottom: ${SPACING.md};">
+          <div style="
+            display: flex;
+            align-items: center;
+            gap: ${SPACING.sm};
+            margin-bottom: ${SPACING.sm};
+          ">
+            <span style="font-size: 18px;">🚇</span>
+            <span style="
+              font-size: ${TYPOGRAPHY.sizes.h3};
+              font-weight: ${TYPOGRAPHY.weights.semibold};
+              color: ${MODULE_DISPLAY.transit.color};
+            ">Transit</span>
+          </div>
+          ${essentials.transit.map(event => `
+            <div style="
+              padding: ${SPACING.sm} 0;
+              padding-left: ${SPACING.lg};
+              border-bottom: 1px solid ${COLORS.navy[100]};
+            ">
+              <span style="
+                font-size: ${TYPOGRAPHY.sizes.body};
+                color: ${COLORS.navy[800]};
+                ${event.isUrgent ? `font-weight: ${TYPOGRAPHY.weights.semibold};` : ''}
+              ">${event.title}</span>
+              ${event.description ? `
+                <span style="
+                  font-size: ${TYPOGRAPHY.sizes.small};
+                  color: ${COLORS.navy[600]};
+                "> — ${event.description}</span>
+              ` : ''}
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+      
+      ${essentials?.parking && essentials.parking.length > 0 ? `
+        <div style="margin-bottom: ${SPACING.md};">
+          <div style="
+            display: flex;
+            align-items: center;
+            gap: ${SPACING.sm};
+            margin-bottom: ${SPACING.sm};
+          ">
+            <span style="font-size: 18px;">🚗</span>
+            <span style="
+              font-size: ${TYPOGRAPHY.sizes.h3};
+              font-weight: ${TYPOGRAPHY.weights.semibold};
+              color: ${MODULE_DISPLAY.parking.color};
+            ">Parking</span>
+          </div>
+          ${essentials.parking.map(event => `
+            <div style="
+              padding: ${SPACING.sm} 0;
+              padding-left: ${SPACING.lg};
+              border-bottom: 1px solid ${COLORS.navy[100]};
+            ">
+              <span style="
+                font-size: ${TYPOGRAPHY.sizes.body};
+                color: ${COLORS.navy[800]};
+              ">${event.title}</span>
+              ${event.description ? `
+                <span style="
+                  font-size: ${TYPOGRAPHY.sizes.small};
+                  color: ${COLORS.navy[600]};
+                "> — ${event.description}</span>
+              ` : ''}
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+      
+      ${essentials?.other && essentials.other.length > 0 ? `
+        <div>
+          ${essentials.other.map(event => `
+            <div style="
+              padding: ${SPACING.sm} 0;
+              border-bottom: 1px solid ${COLORS.navy[100]};
+            ">
+              <span style="
+                font-size: ${TYPOGRAPHY.sizes.body};
+                color: ${COLORS.navy[800]};
+              ">${event.title}</span>
+              ${event.description ? `
+                <span style="
+                  font-size: ${TYPOGRAPHY.sizes.small};
+                  color: ${COLORS.navy[600]};
+                "> — ${event.description}</span>
+              ` : ''}
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+    </div>
+  ` : '';
+
+  // ==========================================================================
+  // 4. HEADLINES SECTION - Curated news
+  // ==========================================================================
   const newsHtml = news && news.length > 0 ? `
     <div style="margin-bottom: ${SPACING.lg};">
       <h2 style="
@@ -1004,7 +1276,7 @@ export function nycToday(data: NYCTodayData): { subject: string; html: string; t
         color: ${COLORS.navy[800]};
         padding-bottom: ${SPACING.sm};
         border-bottom: 2px solid ${COLORS.navy[200]};
-      ">📰 NYC News</h2>
+      ">📰 HEADLINES</h2>
       ${news.map((item, index) => `
         <div style="
           padding: ${SPACING.md} 0;
@@ -1020,13 +1292,29 @@ export function nycToday(data: NYCTodayData): { subject: string; html: string; t
             margin-bottom: ${SPACING.xs};
           ">${item.title}</a>
           <div style="
-            font-size: 11px;
-            color: ${COLORS.navy[400]};
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: ${TYPOGRAPHY.weights.medium};
+            display: flex;
+            align-items: center;
+            gap: ${SPACING.sm};
             margin-bottom: ${SPACING.sm};
-          ">${SOURCE_LABELS[item.source] || item.source}</div>
+          ">
+            <span style="
+              font-size: 11px;
+              color: ${COLORS.navy[400]};
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              font-weight: ${TYPOGRAPHY.weights.medium};
+            ">${SOURCE_LABELS[item.source] || item.source}</span>
+            ${item.category === 'breaking' ? `
+              <span style="
+                font-size: 10px;
+                background: ${COLORS.urgency.high};
+                color: white;
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-weight: ${TYPOGRAPHY.weights.medium};
+              ">BREAKING</span>
+            ` : ''}
+          </div>
           <p style="
             margin: 0 0 ${SPACING.sm} 0;
             font-size: ${TYPOGRAPHY.sizes.body};
@@ -1049,45 +1337,9 @@ export function nycToday(data: NYCTodayData): { subject: string; html: string; t
     </div>
   ` : '';
 
-  // What Matters Today section
-  const whatMattersHtml = whatMattersToday.length > 0 ? `
-    <div style="margin-bottom: ${SPACING.lg};">
-      <h2 style="
-        margin: 0 0 ${SPACING.md} 0;
-        font-size: ${TYPOGRAPHY.sizes.h3};
-        color: ${COLORS.navy[800]};
-        display: flex;
-        align-items: center;
-        gap: ${SPACING.sm};
-      ">⚡ WHAT MATTERS TODAY</h2>
-      ${whatMattersToday.map(event => `
-        <div style="
-          padding: ${SPACING.sm} 0;
-          border-bottom: 1px solid ${COLORS.navy[100]};
-          display: flex;
-          align-items: flex-start;
-          gap: ${SPACING.sm};
-        ">
-          <span style="color: ${event.isUrgent ? COLORS.urgency.high : COLORS.navy[600]};">•</span>
-          <div>
-            <span style="
-              font-size: ${TYPOGRAPHY.sizes.body};
-              color: ${COLORS.navy[800]};
-              ${event.isUrgent ? `font-weight: ${TYPOGRAPHY.weights.semibold};` : ''}
-            ">${event.title}</span>
-            ${event.description ? `
-              <span style="
-                font-size: ${TYPOGRAPHY.sizes.small};
-                color: ${COLORS.navy[600]};
-              "> — ${event.description}</span>
-            ` : ''}
-          </div>
-        </div>
-      `).join('')}
-    </div>
-  ` : '';
-
-  // Don't Miss section (single highlight)
+  // ==========================================================================
+  // 5. DON'T MISS SECTION - Single highlight
+  // ==========================================================================
   const dontMissHtml = dontMiss ? `
     <div style="
       background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
@@ -1096,11 +1348,19 @@ export function nycToday(data: NYCTodayData): { subject: string; html: string; t
       margin-bottom: ${SPACING.lg};
       border-left: 4px solid ${COLORS.urgency.medium};
     ">
-      <h2 style="
-        margin: 0 0 ${SPACING.sm} 0;
-        font-size: ${TYPOGRAPHY.sizes.h3};
-        color: ${COLORS.navy[800]};
-      ">🎯 DON'T MISS</h2>
+      <div style="
+        display: flex;
+        align-items: center;
+        gap: ${SPACING.sm};
+        margin-bottom: ${SPACING.sm};
+      ">
+        ${dontMiss.moduleIcon ? `<span style="font-size: 20px;">${dontMiss.moduleIcon}</span>` : '🎯'}
+        <h2 style="
+          margin: 0;
+          font-size: ${TYPOGRAPHY.sizes.h3};
+          color: ${COLORS.navy[800]};
+        ">DON'T MISS</h2>
+      </div>
       <p style="
         margin: 0 0 ${SPACING.sm} 0;
         font-size: ${TYPOGRAPHY.sizes.body};
@@ -1126,8 +1386,10 @@ export function nycToday(data: NYCTodayData): { subject: string; html: string; t
     </div>
   ` : '';
 
-  // Tonight in NYC
-  const tonightHtml = tonightInNYC.length > 0 ? `
+  // ==========================================================================
+  // 6. TONIGHT IN NYC - Evening events
+  // ==========================================================================
+  const tonightHtml = tonightInNYC && tonightInNYC.length > 0 ? `
     <div style="margin-bottom: ${SPACING.lg};">
       <h2 style="
         margin: 0 0 ${SPACING.md} 0;
@@ -1164,7 +1426,9 @@ export function nycToday(data: NYCTodayData): { subject: string; html: string; t
     </div>
   ` : '';
 
-  // Look Ahead
+  // ==========================================================================
+  // 7. LOOK AHEAD - Weather forecast
+  // ==========================================================================
   const lookAheadHtml = lookAhead.length > 0 ? `
     <div style="
       background: ${COLORS.navy[100]};
@@ -1201,6 +1465,9 @@ export function nycToday(data: NYCTodayData): { subject: string; html: string; t
     </div>
   ` : '';
 
+  // ==========================================================================
+  // ASSEMBLE HTML
+  // ==========================================================================
   const html = `
     <!DOCTYPE html>
     <html>
@@ -1213,45 +1480,36 @@ export function nycToday(data: NYCTodayData): { subject: string; html: string; t
 
         <!-- Header -->
         <div style="
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
+          text-align: center;
           margin-bottom: ${SPACING.lg};
           padding-bottom: ${SPACING.md};
           border-bottom: 2px solid ${COLORS.navy[200]};
         ">
-          <div>
-            <h1 style="
-              margin: 0;
-              font-size: ${TYPOGRAPHY.sizes.h1};
-              color: ${COLORS.navy[800]};
-            ">NYC TODAY</h1>
+          <h1 style="
+            margin: 0;
+            font-size: ${TYPOGRAPHY.sizes.h1};
+            color: ${COLORS.navy[800]};
+          ">NYC TODAY</h1>
+          <p style="
+            margin: 4px 0 0 0;
+            font-size: ${TYPOGRAPHY.sizes.small};
+            color: ${COLORS.navy[600]};
+          ">${dateStr}</p>
+          ${user.neighborhood ? `
             <p style="
               margin: 4px 0 0 0;
               font-size: ${TYPOGRAPHY.sizes.small};
-              color: ${COLORS.navy[600]};
-            ">${dateStr}</p>
-          </div>
-          ${weather ? `
-            <div style="text-align: right;">
-              <span style="font-size: 24px;">${weather.icon}</span>
-              <p style="
-                margin: 0;
-                font-size: ${TYPOGRAPHY.sizes.body};
-                color: ${COLORS.navy[700]};
-              ">${weather.low}° → ${weather.high}°</p>
-            </div>
+              color: ${COLORS.navy[400]};
+            ">📍 ${user.neighborhood}</p>
           ` : ''}
         </div>
 
+        ${breakingHtml}
+        ${weatherHtml}
+        ${essentialsHtml}
         ${newsHtml}
-
-        ${whatMattersHtml}
-
         ${dontMissHtml}
-
         ${tonightHtml}
-
         ${lookAheadHtml}
 
         ${footer(`${appBaseUrl}/preferences`, `${appBaseUrl}/unsubscribe`)}
@@ -1261,39 +1519,62 @@ export function nycToday(data: NYCTodayData): { subject: string; html: string; t
     </html>
   `;
 
-  // Plain text
-  const newsText = news && news.length > 0 ? `📰 TOP STORIES
-${news.map(n => `• ${n.title} (${SOURCE_LABELS[n.source] || n.source})
+  // ==========================================================================
+  // PLAIN TEXT VERSION
+  // ==========================================================================
+  const breakingText = breaking && breaking.length > 0 ? `🚨 BREAKING
+${breaking.map(e => `• ${e.title}${e.description ? ` — ${e.description}` : ''}`).join('\n')}
+
+` : '';
+
+  const weatherText = weather ? `🌤️ WEATHER: ${weather.icon} ${weather.low}° → ${weather.high}° ${weather.summary}${weather.alert ? `\n⚠️ ${weather.alert}` : ''}
+
+` : '';
+
+  const essentialsText = hasEssentials ? `⚡ TODAY'S ESSENTIALS
+${essentials?.transit?.length ? `🚇 Transit:\n${essentials.transit.map(e => `• ${e.title}${e.description ? ` — ${e.description}` : ''}`).join('\n')}\n` : ''}${essentials?.parking?.length ? `\n🚗 Parking:\n${essentials.parking.map(e => `• ${e.title}${e.description ? ` — ${e.description}` : ''}`).join('\n')}\n` : ''}${essentials?.other?.length ? `\n${essentials.other.map(e => `• ${e.title}${e.description ? ` — ${e.description}` : ''}`).join('\n')}\n` : ''}
+
+` : '';
+
+  const newsText = news && news.length > 0 ? `📰 HEADLINES
+${news.map(n => `• ${n.title}${n.category === 'breaking' ? ' [BREAKING]' : ''} (${SOURCE_LABELS[n.source] || n.source})
   ${n.summary}${n.nycAngle ? `\n  💡 ${n.nycAngle}` : ''}`).join('\n\n')}
+
+` : '';
+
+  const dontMissText = dontMiss ? `🎯 DON'T MISS
+${dontMiss.title}
+→ ${dontMiss.description}
+
+` : '';
+
+  const tonightText = tonightInNYC && tonightInNYC.length > 0 ? `📍 TONIGHT IN NYC
+${tonightInNYC.map(e => `${e.isFree ? 'Free' : e.price || '•'} · ${e.title}`).join('\n')}
+
+` : '';
+
+  const lookAheadText = lookAhead.length > 0 ? `🌤️ LOOK AHEAD
+${lookAhead.map(d => `${d.day}: ${d.forecast}${d.tip ? ` — ${d.tip}` : ''}`).join('\n')}
 
 ` : '';
 
   const text = `
 NYC TODAY — ${shortDate}
-${weather ? `${weather.icon} ${weather.low}° → ${weather.high}°` : ''}
+${user.neighborhood ? `📍 ${user.neighborhood}\n` : ''}
 
-${newsText}⚡ WHAT MATTERS TODAY
-${whatMattersToday.map(e => `• ${e.title}${e.description ? ` — ${e.description}` : ''}`).join('\n')}
-
-${dontMiss ? `🎯 DON'T MISS
-${dontMiss.title}
-→ ${dontMiss.description}
-
-` : ''}📍 TONIGHT IN NYC
-${tonightInNYC.map(e => `${e.isFree ? 'Free' : e.price || '•'} · ${e.title}`).join('\n')}
-
-🌤️ LOOK AHEAD
-${lookAhead.map(d => `${d.day}: ${d.forecast}${d.tip ? ` — ${d.tip}` : ''}`).join('\n')}
-
----
+${breakingText}${weatherText}${essentialsText}${newsText}${dontMissText}${tonightText}${lookAheadText}---
 ${appBaseUrl}/preferences
   `.trim();
 
-  return {
-    subject: `🗽 NYC Today: ${shortDate}${dontMiss ? ' — ' + dontMiss.title : ''}`,
-    html,
-    text,
-  };
+  // Dynamic subject line based on content priority
+  let subject = `🗽 NYC Today: ${shortDate}`;
+  if (breaking && breaking.length > 0) {
+    subject = `🚨 ${breaking[0].title.slice(0, 50)}${breaking[0].title.length > 50 ? '...' : ''}`;
+  } else if (dontMiss) {
+    subject = `🗽 NYC Today: ${dontMiss.title.slice(0, 40)}${dontMiss.title.length > 40 ? '...' : ''}`;
+  }
+
+  return { subject, html, text };
 }
 
 export default {

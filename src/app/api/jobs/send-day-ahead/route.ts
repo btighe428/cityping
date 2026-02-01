@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { sendEmail } from '@/lib/resend'
 import { fetchDayAheadData, generateDayAheadEmailHtml } from '@/lib/day-ahead'
 import { JobMonitor } from '@/lib/job-monitor'
+import { sendEmailTracked, acquireJobLock, releaseJobLock } from '@/lib/email-outbox'
 
 // Verify cron secret for security
 function verifyCronSecret(request: NextRequest): boolean {
@@ -22,6 +22,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Acquire distributed lock to prevent concurrent runs
+  const lockId = await acquireJobLock('send-day-ahead', 30)
+  if (!lockId) {
+    console.log('[Day Ahead] Another instance is already running, skipping')
+    return NextResponse.json({ 
+      success: false, 
+      reason: 'Another instance is already running' 
+    }, { status: 429 })
+  }
+
   const jobMonitor = await JobMonitor.start('send-day-ahead')
 
   try {
@@ -32,6 +42,7 @@ export async function GET(request: NextRequest) {
 
     if (!dayAheadData) {
       await jobMonitor.fail(new Error('Failed to fetch day-ahead data'))
+      await releaseJobLock('send-day-ahead', lockId)
       return NextResponse.json({
         success: false,
         error: 'Failed to fetch day-ahead data',
@@ -75,16 +86,21 @@ export async function GET(request: NextRequest) {
       if (email && !uniqueEmails.has(email)) {
         uniqueEmails.set(email, {
           email,
-          manageUrl: `${baseUrl}/dashboard`, // TODO: Generate manage token
+          manageUrl: `${baseUrl}/dashboard`,
         })
       }
     }
 
+    // Parse the target date for idempotency
+    const targetDate = new Date(dayAheadData.date)
+    targetDate.setHours(0, 0, 0, 0)
+
     let sent = 0
+    let skipped = 0
     let errors = 0
     const errorDetails: string[] = []
 
-    // Send emails
+    // Send emails with tracking
     for (const [email, userData] of uniqueEmails) {
       try {
         const { subject, html, text } = generateDayAheadEmailHtml(
@@ -92,15 +108,33 @@ export async function GET(request: NextRequest) {
           userData.manageUrl
         )
 
-        await sendEmail({
-          to: email,
-          subject,
-          html,
-          text,
-        })
+        // Send with idempotency tracking
+        const result = await sendEmailTracked(
+          {
+            to: email,
+            subject,
+            html,
+            text,
+          },
+          'day_ahead',
+          targetDate,
+          {
+            date: dayAheadData.date,
+            aspSummary: dayAheadData.summary.aspSummary,
+          }
+        )
 
-        sent++
-        console.log(`[Day Ahead] Sent to ${email}`)
+        if (result.alreadySent) {
+          skipped++
+          console.log(`[Day Ahead] Skipped duplicate for ${email}`)
+        } else if (result.success) {
+          sent++
+          console.log(`[Day Ahead] Sent to ${email}`)
+        } else {
+          errors++
+          errorDetails.push(`${email}: ${result.error}`)
+          console.error(`[Day Ahead] Failed for ${email}: ${result.error}`)
+        }
       } catch (err) {
         errors++
         const errorMsg = err instanceof Error ? err.message : 'Unknown error'
@@ -113,12 +147,15 @@ export async function GET(request: NextRequest) {
       itemsProcessed: sent,
       itemsFailed: errors,
       metadata: {
+        skipped,
         date: dayAheadData.date,
         eligible: uniqueEmails.size,
         asp: dayAheadData.summary.aspSummary,
         weather: dayAheadData.weather?.shortForecast || null,
       },
     })
+
+    await releaseJobLock('send-day-ahead', lockId)
 
     const result = {
       success: true,
@@ -132,17 +169,19 @@ export async function GET(request: NextRequest) {
       emails: {
         eligible: uniqueEmails.size,
         sent,
+        skipped,
         errors,
       },
       ...(errorDetails.length > 0 && { errorDetails }),
     }
 
-    console.log(`[Day Ahead] Complete: ${sent} sent, ${errors} errors`)
+    console.log(`[Day Ahead] Complete: ${sent} sent, ${skipped} skipped, ${errors} errors`)
 
     return NextResponse.json(result)
   } catch (error) {
     console.error('[Day Ahead] Job failed:', error)
     await jobMonitor.fail(error)
+    await releaseJobLock('send-day-ahead', lockId)
     return NextResponse.json(
       {
         error: 'Job failed',

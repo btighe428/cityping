@@ -606,7 +606,7 @@ export async function curateContentV2(
       // Check for fuzzy duplicates
       let isFuzzyDupe = false;
       for (const [, existingItem] of dedupMap) {
-        if (areTitlesSimilar(getItemTitle(item), getItemTitle(existingItem), 0.6)) {
+        if (areTitlesSimilar(getItemTitle(item), getItemTitle(existingItem), 0.8)) {
           if (item.scores.overall > existingItem.scores.overall) {
             dropped.push({
               item: existingItem,

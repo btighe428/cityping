@@ -18,6 +18,217 @@
  *   const key = generateDedupKey("news", title);
  */
 
+// =============================================================================
+// TRANSIT ALERT SEVERITY CLASSIFICATION
+// =============================================================================
+
+export type TransitAlertSeverity = "critical" | "major" | "minor" | "planned" | "info";
+
+export interface TransitAlertClassification {
+  severity: TransitAlertSeverity;
+  score: number;
+  isActionable: boolean;
+  reason: string;
+}
+
+/**
+ * Severity keywords for transit alerts - ordered by priority
+ */
+const TRANSIT_SEVERITY_KEYWORDS = {
+  // Critical: Service completely unavailable or emergency situations
+  // These are ordered with longer phrases first to avoid partial matches
+  critical: [
+    "all service suspended", "service suspended", "suspended",
+    "no service", "line closed", "station closed",
+    "police investigation", "emergency", "evacuation",
+    "fire", "explosion", "crash", "collision", "derailment",
+    "shut down", "shutdown", "major disruption", "service disruption",
+  ],
+  
+  // Major: Significant delays or service changes that affect commute decisions
+  major: [
+    "significant delays", "major delays", "severe delays", "extensive delays",
+    "trains rerouted", "express to local", "local to express",
+    "bypassing", "termination", "short turn", "turned back",
+    "single tracking", "reduced service", "limited service",
+    "longer than usual", "overcrowded", "crowded conditions",
+    "30 min", "25 min", "20 min", "15 min",
+    "crowding",
+  ],
+  
+  // Minor: Routine delays that don't significantly impact commute
+  minor: [
+    "minor delays", "some delays",
+    "operating at reduced speed", "slower than usual",
+    "slow speeds", "train traffic", "congestion",
+    "10 min", "5 min", "brief delays", "momentary delays",
+    // Generic "delays" is last - only match if no other severity matched
+    "delays",
+  ],
+  
+  // Planned: Scheduled maintenance or planned work
+  planned: [
+    "planned work", "planned", "scheduled maintenance", "track work", "station work",
+    "modernization", "improvements", "reconstruction", "renovation",
+    "weekend service", "late night service", "overnight work",
+    "alternative service", "shuttle bus", "free shuttle",
+  ],
+  
+  // Info: General information, not alerts
+  info: [
+    "reminder", "note", "please be advised", "customers should",
+    "accessibility", "information",
+    // Equipment-specific issues (non-service affecting)
+    "elevator", "escalator", "out of service",
+  ],
+};
+
+/**
+ * Classify a transit alert by severity based on its content.
+ * 
+ * @param title - Alert header/title
+ * @param description - Alert description/body
+ * @returns Classification with severity, score, and actionability
+ */
+export function classifyTransitAlert(
+  title: string,
+  description?: string | null
+): TransitAlertClassification {
+  const text = `${title} ${description || ""}`.toLowerCase();
+  
+  // Check severity levels in order of priority
+  for (const [severity, keywords] of Object.entries(TRANSIT_SEVERITY_KEYWORDS)) {
+    for (const keyword of keywords) {
+      if (text.includes(keyword.toLowerCase())) {
+        const scoreMap: Record<string, number> = {
+          critical: 100,
+          major: 80,
+          minor: 40,
+          planned: 25,
+          info: 10,
+        };
+        
+        const isActionableMap: Record<string, boolean> = {
+          critical: true,
+          major: true,
+          minor: false, // Minor delays are noise - don't alert
+          planned: false, // Planned work is known in advance
+          info: false,
+        };
+        
+        return {
+          severity: severity as TransitAlertSeverity,
+          score: scoreMap[severity],
+          isActionable: isActionableMap[severity],
+          reason: `Matched keyword: "${keyword}"`,
+        };
+      }
+    }
+  }
+  
+  // Default: treat unknown alerts as minor/non-actionable
+  return {
+    severity: "minor",
+    score: 35,
+    isActionable: false,
+    reason: "No severity keywords matched - defaulting to minor",
+  };
+}
+
+/**
+ * Check if a transit alert should be suppressed based on content.
+ * Returns true if the alert should be filtered out.
+ */
+export function shouldSuppressTransitAlert(
+  title: string,
+  description?: string | null,
+  existingAlerts?: Array<{ title: string; description?: string | null }>
+): { suppress: boolean; reason: string } {
+  const text = `${title} ${description || ""}`.toLowerCase();
+  const classification = classifyTransitAlert(title, description);
+  
+  // Suppress non-actionable alerts (minor delays, planned work, info)
+  if (!classification.isActionable) {
+    return {
+      suppress: true,
+      reason: `Low severity (${classification.severity}): ${classification.reason}`,
+    };
+  }
+  
+  // Suppress alerts with redundant phrasing
+  const noisePatterns = [
+    /we apologize for any inconvenience/i,
+    /thank you for your patience/i,
+    /please plan accordingly/i,
+    /consider alternate routes/i,
+  ];
+  
+  for (const pattern of noisePatterns) {
+    if (pattern.test(text)) {
+      // Don't suppress solely based on polite language, just note it
+      break;
+    }
+  }
+  
+  // Check for duplicate/similar existing alerts
+  if (existingAlerts && existingAlerts.length > 0) {
+    for (const existing of existingAlerts) {
+      const similarity = calculateAlertSimilarity(title, existing.title);
+      if (similarity > 0.7) {
+        // Check if new alert is lower severity than existing
+        const existingClass = classifyTransitAlert(existing.title, existing.description);
+        if (classification.score < existingClass.score) {
+          return {
+            suppress: true,
+            reason: `Similar to existing ${existingClass.severity} alert (${Math.round(similarity * 100)}% match)`,
+          };
+        }
+      }
+    }
+  }
+  
+  // Suppress specific low-value alert types
+  const lowValuePatterns = [
+    { pattern: /elevator.*out of service/i, reason: "Accessibility equipment issue (non-service)" },
+    { pattern: /escalator.*out of service/i, reason: "Accessibility equipment issue (non-service)" },
+    { pattern: /vendor.*medical/i, reason: "Non-service medical incident" },
+    { pattern: /unauthorized person.*track/i, reason: "Common delay cause - usually brief" },
+    { pattern: /medical.*assist/i, reason: "Medical assistance (usually brief delay)" },
+  ];
+  
+  for (const { pattern, reason } of lowValuePatterns) {
+    if (pattern.test(text)) {
+      // These are minor - suppress unless severity is critical
+      if (classification.severity !== "critical") {
+        return { suppress: true, reason };
+      }
+    }
+  }
+  
+  return { suppress: false, reason: "High-signal alert" };
+}
+
+/**
+ * Calculate similarity between two alert titles (0-1).
+ */
+function calculateAlertSimilarity(title1: string, title2: string): number {
+  const normalize = (s: string) => 
+    s.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, "")
+      .split(/\s+/)
+      .filter(w => w.length > 2);
+  
+  const words1 = new Set(normalize(title1));
+  const words2 = new Set(normalize(title2));
+  
+  if (words1.size === 0 || words2.size === 0) return 0;
+  
+  const intersection = new Set([...words1].filter(w => words2.has(w)));
+  const union = new Set([...words1, ...words2]);
+  
+  return intersection.size / union.size;
+}
+
 import { DateTime } from "luxon";
 import type { ContentScores, ContentCategory } from "./types";
 
@@ -228,14 +439,36 @@ export function scoreRelevance(text: string, source?: string): number {
  *
  * @param text - Combined title + body/summary text
  * @param contentType - Type of content (alert, news, event, etc.)
+ * @param title - Optional title for transit alert severity classification
  * @returns Score 0-100 (100 = high impact)
  */
 export function scoreImpact(
   text: string,
-  contentType?: "news" | "alert" | "event" | "deal" | "civic" | "weather" | "transit" | "housing"
+  contentType?: "news" | "alert" | "event" | "deal" | "civic" | "weather" | "transit" | "housing",
+  title?: string
 ): number {
   const lowerText = text.toLowerCase();
   let score = 40; // Base score
+
+  // For transit alerts, use severity classification for more accurate scoring
+  if (contentType === "transit" && title) {
+    const classification = classifyTransitAlert(title, text);
+    // Use severity score (0-100) as the base, with slight adjustments for keywords
+    score = classification.score;
+    
+    // Additional keyword boosts for transit-specific urgency
+    if (lowerText.includes("suspended") || lowerText.includes("no service")) {
+      score = Math.max(score, 95);
+    }
+    if (lowerText.includes("multiple lines") || lowerText.includes("several lines")) {
+      score += 10; // Multi-line issues are higher impact
+    }
+    if (lowerText.includes("rush hour") || lowerText.includes("peak")) {
+      score += 5; // Timing context adds urgency
+    }
+    
+    return Math.min(100, score);
+  }
 
   // Check high-impact keywords
   let highImpactMatches = 0;
@@ -341,6 +574,7 @@ export function scoreCompleteness(data: {
 
 /**
  * Calculate overall content score combining all dimensions.
+ * For transit alerts, weights impact more heavily to ensure severity drives the score.
  */
 export function scoreContent(data: {
   title?: string | null;
@@ -357,14 +591,22 @@ export function scoreContent(data: {
 
   const recency = scoreRecency(publishDate);
   const relevance = scoreRelevance(text, data.source || undefined);
-  const impact = scoreImpact(text, data.contentType);
+  // Pass title for transit alert severity classification
+  const impact = scoreImpact(text, data.contentType, data.title || undefined);
   const completeness = scoreCompleteness(data);
 
+  // For transit alerts, weight impact more heavily (50% instead of 30%)
+  // This ensures severity is the dominant factor
+  const isTransit = data.contentType === "transit";
+  const weights = isTransit
+    ? { recency: 0.15, relevance: 0.20, impact: 0.50, completeness: 0.15 }
+    : WEIGHTS;
+
   const overall = Math.round(
-    recency * WEIGHTS.recency +
-    relevance * WEIGHTS.relevance +
-    impact * WEIGHTS.impact +
-    completeness * WEIGHTS.completeness
+    recency * weights.recency +
+    relevance * weights.relevance +
+    impact * weights.impact +
+    completeness * weights.completeness
   );
 
   return {
@@ -391,18 +633,24 @@ export function categorizeContent(
   const text = `${title} ${body || ""}`.toLowerCase();
 
   // Breaking/urgent - highest priority
+  // Check for critical transit issues that are breaking news
   if (
     text.includes("breaking") ||
     text.includes("emergency") ||
     text.includes("evacuation") ||
     text.includes("shooting") ||
     text.includes("explosion") ||
-    contentType === "alert"
+    // Critical transit alerts - service suspended is breaking news
+    (contentType === "transit" && 
+      (text.includes("suspended") || text.includes("no service") || text.includes("line closed"))) ||
+    // General alerts are breaking by default
+    (contentType === "alert" && !contentType?.includes("transit"))
   ) {
     return "breaking";
   }
 
   // Essential - transit, weather
+  // Transit alerts that are major but not critical (delays, reroutes)
   if (
     contentType === "transit" ||
     contentType === "weather" ||
@@ -455,22 +703,66 @@ export function categorizeContent(
  * Generate a deduplication key for content.
  * Used to identify duplicate stories across sources.
  *
+ * IMPROVED: The old implementation sorted words alphabetically, which caused
+ * different stories like "Subway fire at Union Square" and "Fire at Union Square subway"
+ * to produce the same key. The new implementation:
+ * - Preserves word order (crucial for meaning)
+ * - Removes stop words to focus on content
+ * - Uses first 7 meaningful words for better uniqueness
+ * - Optionally incorporates snippet for more robust deduplication
+ *
  * @param contentType - Type prefix (news, alert, event, deal)
  * @param title - Content title
+ * @param snippet - Optional content snippet for enhanced deduplication
  * @returns Normalized dedup key string
  */
-export function generateDedupKey(contentType: string, title: string): string {
-  // Normalize: lowercase, remove punctuation, extract key words
+export function generateDedupKey(contentType: string, title: string, snippet?: string | null): string {
+  // Common stop words to remove
+  const stopWords = new Set([
+    "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by",
+    "from", "as", "is", "was", "are", "were", "be", "been", "being", "have", "has", "had",
+    "do", "does", "did", "will", "would", "could", "should", "may", "might", "must", "can",
+    "this", "that", "these", "those", "i", "you", "he", "she", "it", "we", "they",
+    "what", "which", "who", "when", "where", "why", "how", "all", "any", "both", "each",
+    "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same",
+    "so", "than", "too", "very", "just", "now", "then", "here", "there", "up", "down",
+    "says", "said", "say", "according", "report", "reports", "after", "before", "about"
+  ]);
+
+  // Normalize title: lowercase, remove punctuation (preserve spaces)
   const normalized = title
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, "")
-    .split(/\s+/)
-    .filter((word) => word.length > 3) // Skip short words
-    .sort() // Alphabetize for consistency
-    .slice(0, 5) // Take top 5 words
-    .join("-");
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  return `${contentType}-${normalized}`;
+  // Extract content words (preserve order, remove stop words)
+  const contentWords = normalized
+    .split(/\s+/)
+    .filter(word => word.length > 2 && !stopWords.has(word))
+    .slice(0, 7); // Take first 7 meaningful words
+
+  // Create base key from content words (order preserved!)
+  const baseKey = contentWords.join("-");
+
+  // Add snippet fingerprint if available (catches same story with different headlines)
+  let snippetPart = "";
+  if (snippet) {
+    const snippetWords = snippet
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, "")
+      .match(/\b\w{5,}\b/g) || [];
+    // Use first 3 significant words from snippet as secondary identifier
+    const snippetKey = snippetWords
+      .filter(w => !stopWords.has(w))
+      .slice(0, 3)
+      .join("-");
+    if (snippetKey) {
+      snippetPart = `--${snippetKey}`;
+    }
+  }
+
+  return `${contentType}-${baseKey}${snippetPart}`;
 }
 
 /**
@@ -478,13 +770,13 @@ export function generateDedupKey(contentType: string, title: string): string {
  *
  * @param title1 - First title
  * @param title2 - Second title
- * @param threshold - Similarity threshold (0-1, default 0.7)
+ * @param threshold - Similarity threshold (0-1, default 0.8)
  * @returns True if titles are likely duplicates
  */
 export function areTitlesSimilar(
   title1: string,
   title2: string,
-  threshold: number = 0.7
+  threshold: number = 0.8
 ): boolean {
   const key1 = generateDedupKey("", title1);
   const key2 = generateDedupKey("", title2);
@@ -510,8 +802,12 @@ export function areTitlesSimilar(
  * Default quality thresholds for content selection.
  */
 export const QUALITY_THRESHOLDS = {
-  /** Minimum score to include in digest */
+  /** Minimum score to include in digest - increased to reduce noise */
   minimum: 40,
+  /** Minimum score for alerts - higher threshold for immediate notifications */
+  alertMinimum: 65,
+  /** Minimum score for transit alerts - only high-severity issues */
+  transitAlertMinimum: 70,
   /** Score for "good" content */
   good: 60,
   /** Score for "excellent" content (featured) */
@@ -520,10 +816,19 @@ export const QUALITY_THRESHOLDS = {
 
 /**
  * Check if content meets minimum quality threshold.
+ * For transit alerts, uses a higher threshold to filter minor delays.
  */
 export function meetsQualityThreshold(
   scores: ContentScores,
-  threshold: number = QUALITY_THRESHOLDS.minimum
+  threshold: number = QUALITY_THRESHOLDS.minimum,
+  contentType?: "news" | "alert" | "event" | "deal" | "civic" | "weather" | "transit" | "housing"
 ): boolean {
+  // Use higher thresholds for alerts to reduce noise
+  if (contentType === "transit") {
+    return scores.overall >= QUALITY_THRESHOLDS.transitAlertMinimum;
+  }
+  if (contentType === "alert") {
+    return scores.overall >= QUALITY_THRESHOLDS.alertMinimum;
+  }
   return scores.overall >= threshold;
 }

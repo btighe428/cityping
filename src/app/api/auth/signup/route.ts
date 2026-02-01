@@ -313,27 +313,50 @@ async function sendNYCTodayPreview(email: string, neighborhood: string): Promise
     take: 5,
   });
 
-  // Build What Matters Today
-  const whatMattersToday: NYCTodayEvent[] = alertEvents
-    .slice(0, 4)
+  // Build essentials grouped by module (new structure)
+  const transitAlerts = alertEvents
+    .filter((e) => e.source.moduleId === "transit")
+    .slice(0, 3)
     .map((e) => ({
       id: e.id,
       title: e.title,
       description: e.body?.slice(0, 60) || undefined,
-      category: e.source.moduleId,
-      isUrgent: e.source.moduleId === "transit",
+      category: "transit",
+      moduleId: "transit" as const,
+      isUrgent: true,
     }));
 
-  // Add a default if no alerts
-  if (whatMattersToday.length === 0) {
-    whatMattersToday.push({
-      id: "default-1",
-      title: "No urgent alerts today",
-      description: "Check back tomorrow for updates",
-      category: "transit",
+  const parkingAlerts = alertEvents
+    .filter((e) => e.source.moduleId === "parking")
+    .slice(0, 2)
+    .map((e) => ({
+      id: e.id,
+      title: e.title,
+      description: e.body?.slice(0, 60) || undefined,
+      category: "parking",
+      moduleId: "parking" as const,
       isUrgent: false,
-    });
-  }
+    }));
+
+  const essentials = {
+    transit: transitAlerts.length > 0 ? transitAlerts : [{
+      id: "default-transit",
+      title: "Normal service on all lines",
+      description: "No major delays reported",
+      category: "transit",
+      moduleId: "transit" as const,
+      isUrgent: false,
+    }],
+    parking: parkingAlerts.length > 0 ? parkingAlerts : [{
+      id: "default-parking",
+      title: "Regular ASP rules in effect",
+      description: "Check signs for your street",
+      category: "parking",
+      moduleId: "parking" as const,
+      isUrgent: false,
+    }],
+    other: [] as NYCTodayEvent[],
+  };
 
   // Don't Miss - pick from evergreen
   const dontMissEvent = evergreenEvents[0];
@@ -377,7 +400,7 @@ async function sendNYCTodayPreview(email: string, neighborhood: string): Promise
       icon: "☀️",
       summary: "Clear",
     },
-    whatMattersToday,
+    essentials,
     dontMiss,
     tonightInNYC,
     lookAhead,

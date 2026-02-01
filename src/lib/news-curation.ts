@@ -20,6 +20,8 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "./db";
+import { generateDedupKey, areTitlesSimilar } from "./agents/scoring";
+import { normalizeUrl, getUrlSignature } from "./dedup/cross-source-dedup";
 
 const anthropic = new Anthropic();
 
@@ -31,6 +33,111 @@ interface ArticleForCuration {
   category: string | null;
   publishedAt: Date;
   url: string;
+}
+
+/**
+ * Source tier rankings for priority ordering.
+ * Tier 1 = most trusted local sources
+ */
+const SOURCE_TIERS = new Map([
+  ["gothamist", 1],
+  ["thecity", 1],
+  ["the city", 1],
+  ["nytimes", 1],
+  ["new york times", 1],
+  ["nypost", 2],
+  ["ny post", 2],
+  ["nydailynews", 2],
+  ["daily news", 2],
+  ["amny", 2],
+  ["hellgate", 2],
+  ["hell gate", 2],
+]);
+
+/**
+ * Deduplicate articles before curation.
+ * 
+ * Uses a combination of:
+ * 1. URL signature matching (catches same story on different domains)
+ * 2. Improved dedupKey matching (preserves word order)
+ * 3. Fuzzy title similarity
+ * 
+ * Priority:
+ * 1. Prefer articles from Tier 1 sources (Gothamist, THE CITY, NYT, etc.)
+ * 2. Prefer more recent articles
+ * 3. Prefer articles with longer/better snippets
+ */
+function deduplicateArticles(articles: ArticleForCuration[]): ArticleForCuration[] {
+  const seen = new Map<string, ArticleForCuration>();
+  const urlSignatures = new Map<string, ArticleForCuration>();
+  const duplicates: Array<{ removed: ArticleForCuration; kept: ArticleForCuration; reason: string }> = [];
+
+  // Sort by priority: Tier 1 sources first, then by recency
+  const sorted = [...articles].sort((a, b) => {
+    const tierA = SOURCE_TIERS.get(a.source.toLowerCase()) || 3;
+    const tierB = SOURCE_TIERS.get(b.source.toLowerCase()) || 3;
+    if (tierA !== tierB) return tierA - tierB;
+    return b.publishedAt.getTime() - a.publishedAt.getTime();
+  });
+
+  for (const article of sorted) {
+    // Stage 1: Check URL signature (catches same story, different source)
+    const urlSig = getUrlSignature(article.url);
+    if (urlSig) {
+      const existingByUrl = urlSignatures.get(urlSig);
+      if (existingByUrl) {
+        duplicates.push({ 
+          removed: article, 
+          kept: existingByUrl, 
+          reason: `URL signature match (${article.source} → ${existingByUrl.source})` 
+        });
+        continue;
+      }
+    }
+
+    // Stage 2: Check dedupKey with improved algorithm
+    const key = generateDedupKey("news", article.title, article.snippet);
+    const existing = seen.get(key);
+
+    if (existing) {
+      duplicates.push({ 
+        removed: article, 
+        kept: existing, 
+        reason: `exact dedup key match (${article.source} → ${existing.source})` 
+      });
+      continue;
+    }
+
+    // Stage 3: Check for fuzzy duplicates (broader match)
+    let isFuzzyDuplicate = false;
+    for (const [, existingArticle] of seen) {
+      if (areTitlesSimilar(article.title, existingArticle.title, 0.75)) {
+        duplicates.push({ 
+          removed: article, 
+          kept: existingArticle, 
+          reason: `fuzzy title match (${article.source} → ${existingArticle.source})` 
+        });
+        isFuzzyDuplicate = true;
+        break;
+      }
+    }
+
+    if (!isFuzzyDuplicate) {
+      seen.set(key, article);
+      if (urlSig) {
+        urlSignatures.set(urlSig, article);
+      }
+    }
+  }
+
+  if (duplicates.length > 0) {
+    console.log(`[News Curation] Removed ${duplicates.length} duplicate articles:`);
+    for (const dup of duplicates.slice(0, 5)) {
+      console.log(`  - "${dup.removed.title.substring(0, 50)}..." (${dup.reason})`);
+    }
+  }
+
+  return Array.from(seen.values());
 }
 
 interface CuratedArticle {
@@ -285,8 +392,13 @@ export async function curateNewsForDate(
     return [];
   }
 
-  // Select top 3
-  const selectedIds = await selectTopArticles(articles);
+  // Deduplicate articles before selection
+  // This prevents the AI from having to choose between obvious duplicates
+  const dedupedArticles = deduplicateArticles(articles);
+  console.log(`[News Curation] After deduplication: ${dedupedArticles.length} unique articles`);
+
+  // Select top 5 from deduplicated set
+  const selectedIds = await selectTopArticles(dedupedArticles);
   console.log(`[News Curation] Selected: ${selectedIds.join(", ")}`);
 
   const curated: CuratedArticle[] = [];

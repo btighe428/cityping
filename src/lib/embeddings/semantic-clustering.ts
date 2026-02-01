@@ -16,6 +16,7 @@
  */
 
 import { cosineSimilarity } from "./embedding-service";
+import { generateClusterName, generateClusterSummary } from "../clustering/cluster-naming";
 
 // Default similarity threshold for clustering
 export const DEFAULT_CLUSTER_THRESHOLD = 0.85;
@@ -44,6 +45,16 @@ export interface TopicCluster {
   size: number;
   /** Computed cluster rank score */
   rankScore: number;
+  /** Generated cluster name (e.g., "Fire at Union Square") */
+  name?: string;
+  /** Cluster summary description */
+  summary?: string;
+  /** Event type extracted from content (e.g., "Fire", "Transit Disruption") */
+  eventType?: string;
+  /** Location extracted from content */
+  location?: string;
+  /** Confidence in cluster naming (0-1) */
+  nameConfidence?: number;
 }
 
 /**
@@ -114,14 +125,59 @@ export function clusterItems(
     }
   }
 
-  // Calculate rank scores for each cluster
+  // Calculate rank scores and generate names for each cluster
   for (const cluster of clusters) {
     cluster.rankScore = calculateClusterRank(cluster);
+    
+    // Generate intelligent cluster name using article titles
+    // Note: In real usage, you'd pass full article objects here
+    // For now, we set a placeholder that will be updated later
+    cluster.name = cluster.topTitle; // Default fallback
   }
 
   // Sort clusters by rank score descending
   clusters.sort((a, b) => b.rankScore - a.rankScore);
 
+  return clusters;
+}
+
+interface ArticleData {
+  id: string;
+  title: string;
+  snippet?: string | null;
+  source: string;
+  score?: number;
+}
+
+/**
+ * Enrich clusters with intelligent names using article data.
+ * Call this after clusterItems() with the actual article objects.
+ */
+export function enrichClusterNames(
+  clusters: TopicCluster[],
+  articleMap: Map<string, ArticleData>
+): TopicCluster[] {
+  for (const cluster of clusters) {
+    const articles = cluster.memberIds
+      .map(id => articleMap.get(id))
+      .filter((a): a is ArticleData => !!a);
+    
+    if (articles.length === 0) continue;
+    
+    const { name, confidence, eventType, location } = generateClusterName(cluster.id, articles);
+    
+    cluster.name = name;
+    cluster.nameConfidence = confidence;
+    cluster.eventType = eventType;
+    cluster.location = location;
+    cluster.summary = generateClusterSummary(articles);
+    
+    // Update topTitle if we have a high-confidence name
+    if (confidence > 0.7 && name !== cluster.topTitle) {
+      cluster.topTitle = name;
+    }
+  }
+  
   return clusters;
 }
 

@@ -756,15 +756,20 @@ export async function selectBestContentV2(
   // Score and filter alerts
   const scoredAlerts: ScoredAlertEvent[] = rawAlerts
     .map((alert) => {
-      // Housing alerts get lower relevance
+      // Determine content type based on source module
       const isHousing = alert.source?.moduleId === "housing";
+      const isTransit = alert.source?.moduleId === "transit";
+      const contentType = isHousing ? "housing" : isTransit ? "transit" : "alert";
+      
       const scores = scoreContent({
         title: alert.title,
         body: alert.body,
         publishedAt: alert.createdAt,
-        contentType: isHousing ? "housing" : "alert",
+        contentType,
       });
-      const category = categorizeContent(alert.title, alert.body, "alert");
+      
+      // For transit alerts, use transit categorization
+      const category = categorizeContent(alert.title, alert.body, contentType);
       const dedupKey = generateDedupKey("alert", alert.title);
 
       // Strip source relation before spreading to match ScoredAlertEvent type
@@ -774,9 +779,15 @@ export async function selectBestContentV2(
         scores,
         category,
         dedupKey,
+        // Store content type for filtering
+        _contentType: contentType,
       };
     })
-    .filter((item) => meetsQualityThreshold(item.scores, cfg.minQualityScore))
+    .filter((item) => {
+      // Use appropriate threshold based on content type
+      const contentType = (item as unknown as { _contentType?: string })._contentType;
+      return meetsQualityThreshold(item.scores, cfg.minQualityScore, contentType as any);
+    })
     .sort((a, b) => b.scores.overall - a.scores.overall);
 
   const alertsDeduped = deduplicateByKey(scoredAlerts);
@@ -833,12 +844,49 @@ export async function selectBestContentV2(
   const diningDeduped = deduplicateByKey(scoredDining);
   const selectedDining = diningDeduped.slice(0, cfg.maxDeals || 3);
 
+  // =============================================================================
+  // CROSS-TYPE DEDUPLICATION
+  // =============================================================================
+  // Remove duplicate content across news, alerts, events, and dining
+  // e.g., if a news article and alert both cover "A train delays", keep only the best one
+
+  const crossTypeDedupMap = new Map<string, ScoredNewsArticle | ScoredAlertEvent | ScoredParkEvent | ScoredDiningDeal>();
+  let crossTypeDuplicates = 0;
+
+  // Process in priority order: news > alerts > events > dining
+  // This ensures higher-priority content types are preferred
+  const allItems = [...selectedNews, ...selectedAlerts, ...selectedEvents, ...selectedDining];
+
+  for (const item of allItems) {
+    const existing = crossTypeDedupMap.get(item.dedupKey);
+    if (!existing) {
+      crossTypeDedupMap.set(item.dedupKey, item);
+    } else {
+      // Keep the one with higher overall score
+      if (item.scores.overall > existing.scores.overall) {
+        crossTypeDedupMap.set(item.dedupKey, item);
+      }
+      crossTypeDuplicates++;
+    }
+  }
+
+  // Reconstruct selections after cross-type dedup
+  const dedupedItems = Array.from(crossTypeDedupMap.values());
+  const finalNews = dedupedItems.filter((i): i is ScoredNewsArticle => 'snippet' in i).slice(0, cfg.maxNews || 5);
+  const finalAlerts = dedupedItems.filter((i): i is ScoredAlertEvent => 'sourceId' in i && !('snippet' in i)).slice(0, cfg.maxAlerts || 3);
+  const finalEvents = dedupedItems.filter((i): i is ScoredParkEvent => 'parkId' in i).slice(0, cfg.maxEvents || 4);
+  const finalDining = dedupedItems.filter((i): i is ScoredDiningDeal => 'restaurant' in i).slice(0, cfg.maxDeals || 3);
+
+  if (crossTypeDuplicates > 0) {
+    console.log(`[DataQuality] Cross-type deduplication removed ${crossTypeDuplicates} duplicates`);
+  }
+
   // Build byCategory grouping
   const allSelected = [
-    ...selectedNews,
-    ...selectedAlerts,
-    ...selectedEvents,
-    ...selectedDining,
+    ...finalNews,
+    ...finalAlerts,
+    ...finalEvents,
+    ...finalDining,
   ];
 
   const byCategory: Record<ContentCategory, Array<ScoredNewsArticle | ScoredAlertEvent | ScoredParkEvent | ScoredDiningDeal>> = {
@@ -863,7 +911,7 @@ export async function selectBestContentV2(
 
   // Determine top sources
   const sourceCountMap = new Map<string, number>();
-  for (const article of selectedNews) {
+  for (const article of finalNews) {
     const count = sourceCountMap.get(article.source) || 0;
     sourceCountMap.set(article.source, count + 1);
   }
@@ -883,15 +931,15 @@ export async function selectBestContentV2(
     lifestyle: byCategory.lifestyle.length,
   };
 
-  console.log(`[DataQuality] Selected ${totalSelected} items (${selectedNews.length} news, ${selectedAlerts.length} alerts, ${selectedEvents.length} events, ${selectedDining.length} dining)`);
+  console.log(`[DataQuality] Selected ${totalSelected} items (${finalNews.length} news, ${finalAlerts.length} alerts, ${finalEvents.length} events, ${finalDining.length} dining)`);
   console.log(`[DataQuality] Average quality: ${avgQuality.toFixed(1)}`);
   console.log(`[DataQuality] Top sources: ${topSources.join(", ") || "none"}`);
 
   return {
-    news: selectedNews,
-    alerts: selectedAlerts,
-    events: selectedEvents,
-    dining: selectedDining,
+    news: finalNews,
+    alerts: finalAlerts,
+    events: finalEvents,
+    dining: finalDining,
     byCategory,
     summary: {
       totalEvaluated,
