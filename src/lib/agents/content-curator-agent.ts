@@ -336,7 +336,7 @@ export async function curateContent(items: ContentItem[]): Promise<CurationResul
   const now = DateTime.now();
 
   // Step 1: Filter stale content
-  let filtered = items.filter(item => {
+  const filtered = items.filter(item => {
     const age = now.diff(DateTime.fromJSDate(item.publishedAt), "hours").hours;
     if (age > CONFIG.staleHours) {
       dropped.push({ item, reason: `Stale (${Math.round(age)}h old)` });

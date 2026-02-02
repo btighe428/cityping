@@ -59,8 +59,8 @@ export async function GET(request: NextRequest) {
     const skipClustering = searchParams.get("skipClustering") === "1";
     const skipHorizon = searchParams.get("skipHorizon") === "1";
 
-    console.log("[DigestPreview] Generating enhanced digest...");
-    console.log(`[DigestPreview] Options: html=${wantHtml}, premium=${isPremium}, skipClustering=${skipClustering}`);
+    // DEBUG: console.log("[DigestPreview] Generating enhanced digest...");
+    // DEBUG: console.log(`[DigestPreview] Options: html=${wantHtml}, premium=${isPremium}, skipClustering=${skipClustering}`);
 
     // Generate the digest
     const digest = await generateDailyDigest({
@@ -73,8 +73,8 @@ export async function GET(request: NextRequest) {
     const summary = summarizeDigest(digest);
     const viable = isDigestViable(digest);
 
-    console.log("[DigestPreview] Summary:");
-    console.log(summary);
+    // DEBUG: console.log("[DigestPreview] Summary:");
+    // DEBUG: console.log(summary);
 
     // Return HTML if requested
     if (wantHtml) {

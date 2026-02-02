@@ -231,7 +231,7 @@ async function main() {
   } else {
     // Perform actual upserts
     let created = 0;
-    let updated = 0;
+    const updated = 0;
     let errors = 0;
 
     for (const event of normalizedEvents) {

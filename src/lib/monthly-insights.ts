@@ -399,7 +399,7 @@ function generateCalendarHtml(year: number, month: number, suspensions: Suspensi
   `
 
   let dayCounter = 1
-  let weekRows = Math.ceil((daysInMonth + startDayOfWeek) / 7)
+  const weekRows = Math.ceil((daysInMonth + startDayOfWeek) / 7)
 
   for (let week = 0; week < weekRows; week++) {
     html += '<tr>'

@@ -321,8 +321,8 @@ export async function ingestStreetClosures(): Promise<{ created: number; skipped
  */
 export async function ingestFarmersMarkets(): Promise<{ created: number; skipped: number }> {
   const markets = await fetchFarmersMarkets();
-  let created = 0;
-  let skipped = 0;
+  const created = 0;
+  const skipped = 0;
 
   // Would store in a dedicated FarmersMarket table
   // For now, log results

@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
   const jobMonitor = await JobMonitor.start("curate-news");
 
   try {
-    console.log("[News Curation] Starting curation job...");
+    // DEBUG: console.log("[News Curation] Starting curation job...");
 
     const today = new Date();
     const curated = await curateNewsForDate(today);

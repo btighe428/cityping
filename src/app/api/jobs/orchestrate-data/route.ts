@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Full orchestration mode
-    console.log(`[Orchestrator API] Starting orchestration (force=${force}, sources=${sources?.join(",") || "auto"})`);
+    // DEBUG: console.log(`[Orchestrator API] Starting orchestration (force=${force}, sources=${sources?.join(",") || "auto"})`);
 
     const result = await orchestrateDataRefresh({
       forceRefresh: force,
@@ -95,17 +95,17 @@ export async function GET(request: NextRequest) {
       cronSecret: process.env.CRON_SECRET,
     });
 
-    // Log detailed results
-    console.log("[Orchestrator API] Results:");
-    for (const source of result.sources) {
-      const status = source.healthy ? "✓" : "✗";
-      const stale = source.isStale ? " [STALE]" : "";
-      const threshold = source.isBelowThreshold ? " [LOW]" : "";
-      console.log(`  ${status} ${source.name}: ${source.itemCount} items${stale}${threshold}`);
-      if (source.errors.length > 0) {
-        console.log(`    Errors: ${source.errors.join(", ")}`);
-      }
-    }
+    // DEBUG: Log detailed results
+    // DEBUG: console.log("[Orchestrator API] Results:");
+    // DEBUG: for (const source of result.sources) {
+    // DEBUG:   const status = source.healthy ? "✓" : "✗";
+    // DEBUG:   const stale = source.isStale ? " [STALE]" : "";
+    // DEBUG:   const threshold = source.isBelowThreshold ? " [LOW]" : "";
+    // DEBUG:   console.log(`  ${status} ${source.name}: ${source.itemCount} items${stale}${threshold}`);
+    // DEBUG:   if (source.errors.length > 0) {
+    // DEBUG:     console.log(`    Errors: ${source.errors.join(", ")}`);
+    // DEBUG:   }
+    // DEBUG: }
 
     // Record job completion
     await jobMonitor.success({

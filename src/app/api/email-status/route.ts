@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
 
       let connected = false;
       let recentEmails: Awaited<ReturnType<typeof listRecentEmails>> = [];
-      let deliveryStats = { sent: 0, delivered: 0, bounced: 0, failed: 0 };
+      const deliveryStats = { sent: 0, delivered: 0, bounced: 0, failed: 0 };
 
       try {
         recentEmails = await listRecentEmails(20);

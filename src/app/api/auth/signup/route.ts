@@ -215,7 +215,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
  * @param neighborhood - User's inferred neighborhood for personalization
  */
 async function sendWelcomeEmail(email: string, neighborhood: string): Promise<void> {
-  console.log(`[Welcome Email] Starting for ${email}, neighborhood: ${neighborhood}`);
+  // DEBUG: console.log(`[Welcome Email] Starting for ${email}, neighborhood: ${neighborhood}`);
 
   // Fetch upcoming alerts from database
   const alerts = await prisma.alertEvent.findMany({
@@ -231,7 +231,7 @@ async function sendWelcomeEmail(email: string, neighborhood: string): Promise<vo
     take: 30,
   });
 
-  console.log(`[Welcome Email] Found ${alerts.length} upcoming alerts`);
+  // DEBUG: console.log(`[Welcome Email] Found ${alerts.length} upcoming alerts`);
 
   // Transform to AlertItem format (filter out alerts with null startsAt)
   const alertItems: AlertItem[] = alerts
@@ -245,7 +245,7 @@ async function sendWelcomeEmail(email: string, neighborhood: string): Promise<vo
       metadata: a.metadata as Record<string, unknown>,
     }));
 
-  console.log(`[Welcome Email] Transformed ${alertItems.length} alert items`);
+  // DEBUG: console.log(`[Welcome Email] Transformed ${alertItems.length} alert items`);
 
   // Group by module
   const alertsByModule: Record<string, AlertItem[]> = {};
@@ -256,7 +256,7 @@ async function sendWelcomeEmail(email: string, neighborhood: string): Promise<vo
     alertsByModule[alert.moduleId].push(alert);
   });
 
-  console.log(`[Welcome Email] Grouped into ${Object.keys(alertsByModule).length} modules:`, Object.keys(alertsByModule));
+  // DEBUG: console.log(`[Welcome Email] Grouped into ${Object.keys(alertsByModule).length} modules:`, Object.keys(alertsByModule));
 
   // Generate welcome email
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://nycping-app.vercel.app";
@@ -275,7 +275,7 @@ async function sendWelcomeEmail(email: string, neighborhood: string): Promise<vo
     text: emailContent.text,
   });
 
-  console.log(`[Welcome Email] Welcome email sent to ${email}`);
+  // DEBUG: console.log(`[Welcome Email] Welcome email sent to ${email}`);
 
   // Also send an immediate "NYC Today" preview so they see the daily format
   await sendNYCTodayPreview(email, neighborhood);
@@ -286,7 +286,7 @@ async function sendWelcomeEmail(email: string, neighborhood: string): Promise<vo
  * Shows new users what their daily briefing will look like
  */
 async function sendNYCTodayPreview(email: string, neighborhood: string): Promise<void> {
-  console.log(`[NYC Today Preview] Starting for ${email}`);
+  // DEBUG: console.log(`[NYC Today Preview] Starting for ${email}`);
 
   const nyNow = DateTime.now().setZone("America/New_York");
 
@@ -419,5 +419,5 @@ async function sendNYCTodayPreview(email: string, neighborhood: string): Promise
     text: emailContent.text,
   });
 
-  console.log(`[NYC Today Preview] Sent to ${email}`);
+  // DEBUG: console.log(`[NYC Today Preview] Sent to ${email}`);
 }

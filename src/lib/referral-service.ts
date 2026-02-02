@@ -44,7 +44,7 @@ import { ReferralStatus } from "@prisma/client";
 // Note: The stripe.ts module throws if STRIPE_SECRET_KEY is missing,
 // but we need a fresh instance here for coupon operations
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_mock", {
-  apiVersion: "2025-11-17.clover",
+  apiVersion: "2026-01-28.clover",
   typescript: true,
 });
 

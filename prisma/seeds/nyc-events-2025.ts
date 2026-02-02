@@ -311,7 +311,7 @@ export async function seedNYCEvents2025(prisma: any) {
   }
 
   let created = 0;
-  let updated = 0;
+  const updated = 0;
 
   for (const event of NYC_EVENTS_2025) {
     const externalId = `nyc-2025-${event.title.toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 50)}`;

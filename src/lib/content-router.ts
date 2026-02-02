@@ -601,7 +601,7 @@ export class ContentRouter {
     }
     
     const nextSlot = nextMap[currentSlot]
-    let targetDate = new Date(now)
+    const targetDate = new Date(now)
     
     // If wrapping to morning, advance to tomorrow
     if (nextSlot === 'morning') {
