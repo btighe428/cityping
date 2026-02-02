@@ -1060,7 +1060,7 @@ export function nycToday(data: NYCTodayData): { subject: string; html: string; t
         gap: ${SPACING.sm};
       ">🚨 BREAKING</h2>
       ${breaking.map(event => {
-        const module = event.moduleId ? MODULE_DISPLAY[event.moduleId] : null;
+        const mod = event.moduleId ? MODULE_DISPLAY[event.moduleId] : null;
         return `
           <div style="
             background: white;
@@ -1075,7 +1075,7 @@ export function nycToday(data: NYCTodayData): { subject: string; html: string; t
               gap: ${SPACING.sm};
               margin-bottom: ${SPACING.xs};
             ">
-              ${module ? `<span style="font-size: 16px;">${module.icon}</span>` : ''}
+              ${mod ? `<span style="font-size: 16px;">${mod.icon}</span>` : ''}
               <span style="
                 font-size: ${TYPOGRAPHY.sizes.h3};
                 font-weight: ${TYPOGRAPHY.weights.semibold};

@@ -13,6 +13,8 @@
  * enabling users to receive timely notifications about major city happenings.
  */
 
+import { PrismaClient } from "@prisma/client";
+
 export const NYC_EVENTS_2025 = [
   // ============================================================================
   // MAJOR ANNUAL EVENTS
@@ -299,7 +301,7 @@ export const NYC_EVENTS_2025 = [
  * Seeds NYC events into the AlertEvent table.
  * Call from prisma/seeds/index.ts or run standalone.
  */
-export async function seedNYCEvents2025(prisma: any) {
+export async function seedNYCEvents2025(prisma: PrismaClient) {
   // Find the events module source
   const source = await prisma.alertSource.findFirst({
     where: { moduleId: "events" },
@@ -309,9 +311,6 @@ export async function seedNYCEvents2025(prisma: any) {
     console.log("  ⚠️  No alert source found for 'events' module. Run module seeds first.");
     return;
   }
-
-  let created = 0;
-  const updated = 0;
 
   for (const event of NYC_EVENTS_2025) {
     const externalId = `nyc-2025-${event.title.toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 50)}`;
@@ -343,10 +342,6 @@ export async function seedNYCEvents2025(prisma: any) {
       },
     });
 
-    if (result.createdAt.getTime() === result.createdAt.getTime()) {
-      // Upsert doesn't tell us if created or updated, so we count all
-      created++;
-    }
   }
 
   console.log(`  ✓ events: ${NYC_EVENTS_2025.length} NYC events seeded`);

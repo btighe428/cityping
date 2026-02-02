@@ -40,7 +40,6 @@ import {
   normalizePermittedEvents,
   deduplicateEvents,
   filterInterestingEvents,
-  NormalizedEvent,
 } from "../src/lib/data-sources/nyc-open-data";
 
 const prisma = new PrismaClient();

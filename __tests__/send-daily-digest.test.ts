@@ -94,6 +94,7 @@ function createMockUser(overrides: Partial<{
   };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createMockNotification(overrides: Partial<{
   id: string;
   userId: string;

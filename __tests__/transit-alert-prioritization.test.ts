@@ -13,7 +13,7 @@ import {
   shouldSuppressTransitAlert,
   scoreContent,
   meetsQualityThreshold,
-  TransitAlertClassification,
+  type TransitAlertClassification,
   QUALITY_THRESHOLDS
 } from "../src/lib/agents/scoring";
 

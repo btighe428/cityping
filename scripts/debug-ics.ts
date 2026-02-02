@@ -46,7 +46,7 @@ async function main() {
 
     const start = c.start as Date & { dateOnly?: boolean }
     const end = c.end as Date & { dateOnly?: boolean }
-    const desc = ((c.description as any)?.val || c.description as string)?.substring(0, 50)
+    const desc = ((c.description as { val?: string })?.val || c.description as string)?.substring(0, 50)
 
     const expandedDates = expandEventToDays(start, end)
 

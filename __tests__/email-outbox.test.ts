@@ -2,7 +2,7 @@
  * Test utilities for verifying idempotency and job locking
  */
 
-import { sendEmailTracked, acquireJobLock, releaseJobLock, wasEmailSent } from '../src/lib/email-outbox'
+import { sendEmailTracked, acquireJobLock, wasEmailSent } from '../src/lib/email-outbox'
 import { prisma } from '../src/lib/db'
 
 // Mock the dependencies

@@ -229,8 +229,8 @@ export function buildDigestHtml(
 
   const sections = Object.entries(events)
     .map(([moduleId, moduleEvents]) => {
-      const module = moduleEvents[0]?.source.module;
-      if (!module) return "";
+      const mod = moduleEvents[0]?.source.module;
+      if (!mod) return "";
 
       const eventItems = moduleEvents
         .map((e) => {
@@ -280,7 +280,7 @@ export function buildDigestHtml(
       return `
         <div style="margin-bottom: 28px;">
           <h2 style="color: #1e3a5f; font-size: 18px; margin: 0 0 12px 0; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0;">
-            ${module.icon} ${escapeHtml(module.name)}
+            ${mod.icon} ${escapeHtml(mod.name)}
           </h2>
           <table style="width: 100%; border-collapse: collapse;">
             ${eventItems}

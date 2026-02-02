@@ -332,7 +332,7 @@ describe("buildDigestSubject", () => {
       if (arg === undefined) {
         return mockDate;
       }
-      return new RealDate(arg as any);
+      return new RealDate(arg as string | number | Date);
     });
   });
 

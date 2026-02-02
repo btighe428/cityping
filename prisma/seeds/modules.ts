@@ -49,11 +49,11 @@ export const MODULES = [
 ] as const;
 
 export async function seedModules() {
-  for (const module of MODULES) {
+  for (const mod of MODULES) {
     await prisma.module.upsert({
-      where: { id: module.id },
-      update: module,
-      create: module,
+      where: { id: mod.id },
+      update: mod,
+      create: mod,
     });
   }
   console.log(`Seeded ${MODULES.length} modules`);

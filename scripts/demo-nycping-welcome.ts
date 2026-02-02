@@ -180,7 +180,7 @@ async function buildWelcomeEmailHtml(userNeighborhood: string) {
       const moduleEvents = byModule[moduleId];
       if (!moduleEvents || moduleEvents.length === 0) return "";
 
-      const module = moduleEvents[0].source.module;
+      const mod = moduleEvents[0].source.module;
 
       const eventRows = moduleEvents
         .slice(0, 3) // Max 3 per module for welcome email
@@ -197,7 +197,7 @@ async function buildWelcomeEmailHtml(userNeighborhood: string) {
       return `
         <div style="margin-bottom: 32px;">
           <h2 style="color: #1e3a5f; font-size: 18px; margin: 0 0 16px 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">
-            ${module.icon} ${module.name}
+            ${mod.icon} ${mod.name}
           </h2>
           ${eventRows}
         </div>
