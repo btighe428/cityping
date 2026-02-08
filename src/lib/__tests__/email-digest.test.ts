@@ -252,7 +252,7 @@ describe("email-digest", () => {
       const html = buildDigestHtml(events, undefined, "user-123", {}, "NYC-ABC12");
 
       // Check for referral section elements
-      expect(html).toContain("Know someone who'd love NYC alerts?");
+      expect(html).toContain("Know someone who'd love this?");
       expect(html).toContain("get 1 month free when they subscribe");
       expect(html).toContain("https://cityping.com/r/NYC-ABC12");
     });
@@ -266,7 +266,7 @@ describe("email-digest", () => {
 
       const html = buildDigestHtml(events, undefined, "user-123", {}, null);
 
-      expect(html).not.toContain("Know someone who'd love NYC alerts?");
+      expect(html).not.toContain("Know someone who'd love this?");
       expect(html).not.toContain("/r/");
     });
 
@@ -279,7 +279,7 @@ describe("email-digest", () => {
 
       const html = buildDigestHtml(events, undefined, "user-123", {});
 
-      expect(html).not.toContain("Know someone who'd love NYC alerts?");
+      expect(html).not.toContain("Know someone who'd love this?");
     });
 
     /**

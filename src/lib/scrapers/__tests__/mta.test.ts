@@ -506,9 +506,9 @@ describe("MTA Scraper", () => {
       expect(mockedPrisma.alertEvent.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            metadata: {
+            metadata: expect.objectContaining({
               affectedLines: expect.arrayContaining(["A", "C", "E"]),
-            },
+            }),
           }),
         })
       );

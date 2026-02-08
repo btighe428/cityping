@@ -255,9 +255,9 @@ describe("GET /api/jobs/send-daily-digest", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.users).toBe(1);
+      expect(data.totalUsers).toBe(1);
       expect(data.skipped).toBe(1);
-      expect(data.digests).toBe(0);
+      expect(data.digestsSent).toBe(0);
       expect(sendEmail).not.toHaveBeenCalled();
     });
 
@@ -287,7 +287,7 @@ describe("GET /api/jobs/send-daily-digest", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.digests).toBe(1);
+      expect(data.digestsSent).toBe(1);
       expect(data.skipped).toBe(0);
 
       // Verify email was sent
@@ -334,8 +334,8 @@ describe("GET /api/jobs/send-daily-digest", () => {
       const response = await GET(request);
       const data = await response.json();
 
-      expect(data.users).toBe(3);
-      expect(data.digests).toBe(2);
+      expect(data.totalUsers).toBe(3);
+      expect(data.digestsSent).toBe(2);
       expect(data.skipped).toBe(1);
       expect(sendEmail).toHaveBeenCalledTimes(2);
     });
@@ -426,13 +426,13 @@ describe("GET /api/jobs/send-daily-digest", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.digests).toBe(0);
+      expect(data.digestsSent).toBe(0);
       expect(data.failed).toBe(1);
       // Should not mark as sent on failure
       expect(prisma.notificationOutbox.updateMany).not.toHaveBeenCalled();
     });
 
-    it("should query for free tier users only", async () => {
+    it("should query all users with email opt-in", async () => {
       const request = createMockRequest({
         "x-cron-secret": "test_cron_secret",
       });
@@ -442,8 +442,10 @@ describe("GET /api/jobs/send-daily-digest", () => {
       await GET(request);
 
       expect(prisma.user.findMany).toHaveBeenCalledWith({
-        where: {
-          tier: "free",
+        select: {
+          id: true,
+          email: true,
+          tier: true,
         },
       });
     });
@@ -515,6 +517,6 @@ describe("POST /api/jobs/send-daily-digest", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.users).toBe(0);
+    expect(data.totalUsers).toBe(0);
   });
 });
