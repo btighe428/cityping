@@ -94,14 +94,31 @@ function createMockUser(overrides: Partial<{
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+interface MockEvent {
+  id: string;
+  sourceId: string;
+  externalId: string | null;
+  title: string;
+  description: string | null;
+  url: string | null;
+  imageUrl: string | null;
+  startsAt: Date;
+  endsAt: Date | null;
+  publishedAt: Date;
+  location: string | null;
+  moduleId: string;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 function createMockNotification(overrides: Partial<{
   id: string;
   userId: string;
   eventId: string;
   status: string;
   scheduledFor: Date;
-  event: any;
+  event: MockEvent;
 }> = {}) {
   return {
     id: overrides.id || `notif-${Math.random().toString(36).slice(2, 8)}`,

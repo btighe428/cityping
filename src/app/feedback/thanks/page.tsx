@@ -12,6 +12,8 @@
  * to confirm their action was received (or explain why it wasn't).
  */
 
+import Link from "next/link";
+
 interface FeedbackThanksPageProps {
   searchParams: Promise<{ success?: string; error?: string }>;
 }
@@ -97,12 +99,12 @@ export default async function FeedbackThanksPage({
 
         <p className="text-gray-600 mb-6">{message}</p>
 
-        <a
+        <Link
           href="/"
           className="inline-block px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           Back to CityPing
-        </a>
+        </Link>
       </div>
     </main>
   );

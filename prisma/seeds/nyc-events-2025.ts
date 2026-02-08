@@ -315,7 +315,7 @@ export async function seedNYCEvents2025(prisma: PrismaClient) {
   for (const event of NYC_EVENTS_2025) {
     const externalId = `nyc-2025-${event.title.toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 50)}`;
 
-    const result = await prisma.alertEvent.upsert({
+    await prisma.alertEvent.upsert({
       where: {
         sourceId_externalId: {
           sourceId: source.id,

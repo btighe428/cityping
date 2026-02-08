@@ -32,8 +32,6 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   orchestrateDataRefresh,
   getDataQualityReport,
-  checkDataFreshness,
-  DATA_SOURCES,
 } from "@/lib/data-orchestrator";
 import { JobMonitor } from "@/lib/job-monitor";
 

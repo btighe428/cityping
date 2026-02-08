@@ -11,7 +11,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { checkEmailStatus, listRecentEmails } from "@/lib/resend";
-import { Resend } from "resend";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -42,8 +41,6 @@ export async function GET(request: NextRequest) {
 
     // Health check
     if (health) {
-      const resend = new Resend(process.env.RESEND_API_KEY);
-
       let connected = false;
       let recentEmails: Awaited<ReturnType<typeof listRecentEmails>> = [];
       const deliveryStats = { sent: 0, delivered: 0, bounced: 0, failed: 0 };

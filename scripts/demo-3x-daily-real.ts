@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Demo script - uses placeholder queries for models not yet in schema
 import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
@@ -17,7 +16,7 @@ const prisma = new PrismaClient()
  *   npx tsx scripts/demo-3x-daily-real.ts <email> [morning|midday|evening|all]
  */
 
-async function fetchRealData(userZip: string) {
+async function fetchRealData(_userZip: string) {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const tomorrow = new Date(today)
@@ -125,7 +124,17 @@ async function fetchWeather(cityId: string) {
   }
 }
 
-function formatTransitAlerts(alerts: any[]) {
+interface TransitAlert {
+  title: string;
+  body: string | null;
+  source: {
+    module: {
+      name: string;
+    };
+  };
+}
+
+function formatTransitAlerts(alerts: TransitAlert[]) {
   if (alerts.length === 0) {
     return [{ line: 'Subway', status: 'good' as const, headline: 'Normal service' }]
   }
@@ -143,7 +152,40 @@ function formatTransitAlerts(alerts: any[]) {
   })
 }
 
-async function sendMorningEmail(to: string, data: any) {
+interface WeatherData {
+  temp: number;
+  condition: string;
+  icon: string;
+  precipChance: number;
+  gearRecommendation: string;
+}
+
+interface SuspensionData {
+  title: string;
+  date: Date;
+  metadata?: {
+    metersSuspended?: boolean;
+  };
+}
+
+interface DemoData {
+  todaySuspension: SuspensionData | null;
+  tomorrowSuspension: SuspensionData | null;
+  transitAlerts: TransitAlert[];
+  weather: WeatherData;
+  tonightEvents: Array<{
+    title: string;
+    venueName?: string;
+    description?: string;
+  }>;
+  lunchSpots: Array<{
+    title: string;
+    venueName?: string;
+    description?: string;
+  }>;
+}
+
+async function sendMorningEmail(to: string, data: DemoData) {
   console.log('🌅 Building Morning Brief with real data...')
   
   const morningData = {
@@ -181,18 +223,23 @@ async function sendMorningEmail(to: string, data: any) {
   return email.subject
 }
 
-async function sendMiddayEmail(to: string, data: any) {
+async function sendMiddayEmail(to: string, data: DemoData) {
   console.log('☀️ Building Midday Update with real data...')
   
   // Check for breaking changes since morning
-  const breakingUpdates = []
+  const breakingUpdates: Array<{
+    type: 'transit_major';
+    headline: string;
+    details: string | null;
+    actionRequired: string;
+  }> = []
   
-  if (data.transitAlerts.some((a: any) => a.body?.toLowerCase().includes('suspended'))) {
-    const suspended = data.transitAlerts.find((a: any) => a.body?.toLowerCase().includes('suspended'))
+  const suspendedAlert = data.transitAlerts.find((a: TransitAlert) => a.body?.toLowerCase().includes('suspended'))
+  if (suspendedAlert) {
     breakingUpdates.push({
       type: 'transit_major' as const,
-      headline: suspended.title,
-      details: suspended.body,
+      headline: suspendedAlert.title,
+      details: suspendedAlert.body,
       actionRequired: 'Check alternate routes',
     })
   }
@@ -202,7 +249,7 @@ async function sendMiddayEmail(to: string, data: any) {
     user: { neighborhood: 'Your Neighborhood', zipCode: '10001' },
     breakingUpdates: breakingUpdates.length > 0 ? breakingUpdates : undefined,
     transit: formatTransitAlerts(data.transitAlerts),
-    lunchSpots: data.lunchSpots.map((spot: any) => ({
+    lunchSpots: data.lunchSpots.map((spot) => ({
       name: spot.venueName || spot.title,
       type: 'restaurant' as const,
       distance: '0.3 mi',
@@ -230,10 +277,10 @@ async function sendMiddayEmail(to: string, data: any) {
   return email.subject
 }
 
-async function sendEveningEmail(to: string, data: any) {
+async function sendEveningEmail(to: string, data: DemoData) {
   console.log('🌆 Building Evening Wind-Down with real data...')
   
-  const { eveningWindDown, EVENING_WINDDOWN_EXAMPLES } = await import('../src/lib/emails/evening-template')
+  const { eveningWindDown } = await import('../src/lib/emails/evening-template')
   
   // For evening, use real ASP data but example events if none found
   const eveningData = {
@@ -267,12 +314,12 @@ async function sendEveningEmail(to: string, data: any) {
     },
     tonight: {
       events: data.tonightEvents.length > 0 
-        ? data.tonightEvents.map((e: any) => ({
-            id: e.id,
+        ? data.tonightEvents.map((e) => ({
+            id: (e as { id?: string }).id || 'event-1',
             name: e.title,
-            venue: e.venue || 'NYC',
-            startTime: e.startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-            neighborhood: e.neighborhood || 'Manhattan',
+            venue: (e as { venue?: string }).venue || 'NYC',
+            startTime: (e as { startTime?: Date }).startTime?.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) || '8:00 PM',
+            neighborhood: (e as { neighborhood?: string }).neighborhood || 'Manhattan',
             category: 'music' as const,
           }))
         : [],

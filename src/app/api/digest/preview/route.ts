@@ -22,10 +22,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { DateTime } from "luxon";
 import {
   generateDailyDigest,
-  summarizeDigest,
   isDigestViable,
 } from "@/lib/agents/daily-digest-orchestrator";
 import {
@@ -70,7 +68,6 @@ export async function GET(request: NextRequest) {
       skipHorizon,
     });
 
-    const summary = summarizeDigest(digest);
     const viable = isDigestViable(digest);
 
     // DEBUG: console.log("[DigestPreview] Summary:");

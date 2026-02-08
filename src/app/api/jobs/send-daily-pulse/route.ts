@@ -32,7 +32,7 @@ import { orchestrateDigestV2 } from "@/lib/agents/agent-orchestrator";
 import type { ContentSelectionV2, ScoredAlertEvent } from "@/lib/agents/types";
 import { sendEmailTracked, acquireJobLock, releaseJobLock } from "@/lib/email-outbox";
 import { checkEmailFrequencyCap, shouldSkipLowValueDigest } from "@/lib/frequency-cap";
-import { MESSAGE_PRIORITY, BATCHING_CONFIG } from "@/lib/delivery-config";
+import { BATCHING_CONFIG } from "@/lib/delivery-config";
 
 // =============================================================================
 // CONFIGURATION
@@ -260,7 +260,7 @@ function isBreakingAlert(alert: ScoredAlertEvent): boolean {
  * Returns organized content: breaking, essentials (by module), news.
  */
 async function runOrchestratorEnhancedPulse(
-  nyNow: DateTime,
+  _nyNow: DateTime,
   weatherForecast: Awaited<ReturnType<typeof fetchNYCWeatherForecast>>
 ) {
   console.log("[Daily Pulse] Using orchestrator-enhanced content selection");
