@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -17,9 +18,9 @@ export default function TermsPage() {
     <div className="min-h-screen bg-white">
       <header className="py-4 px-6 border-b border-[var(--navy-100)]">
         <div className="max-w-4xl mx-auto">
-          <a href="/" className="text-xl font-bold text-[var(--navy-800)]">
+          <Link href="/" className="text-xl font-bold text-[var(--navy-800)]">
             CityPing
-          </a>
+          </Link>
         </div>
       </header>
 
@@ -82,9 +83,9 @@ export default function TermsPage() {
 
       <footer className="py-8 px-6 border-t border-[var(--navy-100)]">
         <div className="max-w-4xl mx-auto text-center text-sm text-[var(--navy-500)]">
-          <a href="/" className="hover:text-[var(--navy-700)]">Home</a>
+          <Link href="/" className="hover:text-[var(--navy-700)]">Home</Link>
           {' · '}
-          <a href="/privacy" className="hover:text-[var(--navy-700)]">Privacy</a>
+          <Link href="/privacy" className="hover:text-[var(--navy-700)]">Privacy</Link>
         </div>
       </footer>
     </div>

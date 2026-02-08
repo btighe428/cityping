@@ -8,6 +8,7 @@ const inter = Inter({
   subsets: ["latin"],
   display: "swap", // Improves CLS by swapping to custom font when loaded
   preload: true,
+  adjustFontFallback: true,
 });
 
 export const metadata: Metadata = {

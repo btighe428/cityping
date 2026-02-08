@@ -110,7 +110,7 @@ export default function FreeThingsNYC() {
             </h1>
 
             <p className="text-xl text-[var(--navy-600)] mb-8 leading-relaxed">
-              New York City is expensive, but it doesn't have to be. From world-class museums to outdoor concerts, here's your guide to experiencing the best of NYC without spending a dime.
+              New York City is expensive, but it doesn&apos;t have to be. From world-class museums to outdoor concerts, here&apos;s your guide to experiencing the best of NYC without spending a dime.
             </p>
 
             {/* Quick Links */}
@@ -227,7 +227,7 @@ export default function FreeThingsNYC() {
                     <li>• Free kayaking (summer weekends)</li>
                     <li>• Movies with a View (summer)</li>
                     <li>• Stunning Manhattan skyline</li>
-                    <li>• Jane's Carousel ($2 - almost free!)</li>
+                    <li>• Jane&apos;s Carousel ($2 - almost free!)</li>
                   </ul>
                 </div>
 
@@ -302,7 +302,7 @@ export default function FreeThingsNYC() {
                   <ul className="text-[var(--navy-700)] space-y-1">
                     <li>• Shakespeare in the Park</li>
                     <li>• Outdoor movie screenings (dozens of locations)</li>
-                    <li>• Macy's 4th of July Fireworks</li>
+                    <li>• Macy&apos;s 4th of July Fireworks</li>
                     <li>• Street fairs nearly every weekend</li>
                   </ul>
                 </div>
@@ -322,7 +322,7 @@ export default function FreeThingsNYC() {
                   <ul className="text-[var(--navy-700)] space-y-1">
                     <li>• Holiday window displays (Fifth Ave)</li>
                     <li>• Rockefeller Center tree viewing</li>
-                    <li>• New Year's Eve in Times Square</li>
+                    <li>• New Year&apos;s Eve in Times Square</li>
                     <li>• Lunar New Year parade (Chinatown)</li>
                   </ul>
                 </div>
