@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   healStaleData,
   ensureDataReady,
+  checkDataFreshness,
 } from "@/lib/agents/robustness-agent";
 import { DateTime } from "luxon";
 

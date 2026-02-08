@@ -95,21 +95,42 @@ function createMockUser(overrides: Partial<{
 }
 
 interface MockEvent {
-  id: string;
-  sourceId: string;
-  externalId: string | null;
-  title: string;
-  description: string | null;
-  url: string | null;
-  imageUrl: string | null;
-  startsAt: Date;
-  endsAt: Date | null;
-  publishedAt: Date;
-  location: string | null;
-  moduleId: string;
-  metadata: Record<string, unknown>;
-  createdAt: Date;
-  updatedAt: Date;
+  id?: string;
+  sourceId?: string;
+  externalId?: string | null;
+  title?: string;
+  body?: string;
+  description?: string | null;
+  url?: string | null;
+  imageUrl?: string | null;
+  startsAt?: Date;
+  endsAt?: Date | null;
+  publishedAt?: Date;
+  location?: string | null;
+  neighborhoods?: never[];
+  moduleId?: string;
+  metadata?: Record<string, unknown>;
+  createdAt?: Date;
+  updatedAt?: Date;
+  expiresAt?: Date | null;
+  source?: {
+    id?: string;
+    moduleId?: string;
+    slug?: string;
+    name?: string;
+    frequency?: string;
+    enabled?: boolean;
+    config?: Record<string, unknown>;
+    lastPolledAt?: Date | null;
+    lastEventAt?: Date | null;
+    module?: {
+      id?: string;
+      name?: string;
+      description?: string;
+      icon?: string;
+      sortOrder?: number;
+    };
+  };
 }
 
 function createMockNotification(overrides: Partial<{

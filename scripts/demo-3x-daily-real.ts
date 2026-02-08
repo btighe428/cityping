@@ -57,9 +57,7 @@ async function fetchRealData(_userZip: string) {
     where: {
       createdAt: { gte: sixHoursAgo },
       source: {
-        module: {
-          type: 'transit'
-        }
+        moduleId: 'transit'
       }
     },
     orderBy: { createdAt: 'desc' },
@@ -75,7 +73,7 @@ async function fetchRealData(_userZip: string) {
   const weather = await fetchWeather(nyc.id)
 
   // Fetch tonight's events
-  const tonightEvents = await prisma.event.findMany({
+  const tonightEvents = await prisma.cityEvent.findMany({
     where: {
       cityId: nyc.id,
       startTime: {
@@ -88,7 +86,7 @@ async function fetchRealData(_userZip: string) {
   })
 
   // Fetch lunch spots (from dining module)
-  const lunchSpots = await prisma.deal.findMany({
+  const lunchSpots = await prisma.diningDeal.findMany({
     where: {
       validFrom: { lte: today },
       validUntil: { gte: today },
