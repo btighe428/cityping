@@ -113,7 +113,7 @@ export default function NYCAlternateSideParkingGuide() {
             </h1>
 
             <p className="text-xl text-[var(--navy-600)] mb-8 leading-relaxed">
-              Alternate Side Parking (ASP) is New York City's street cleaning program that requires vehicles to move from one side of the street to another on scheduled days. This comprehensive guide covers everything you need to know to avoid tickets and navigate NYC's ASP regulations.
+              Alternate Side Parking (ASP) is New York City&apos;s street cleaning program that requires vehicles to move from one side of the street to another on scheduled days. This comprehensive guide covers everything you need to know to avoid tickets and navigate NYC&apos;s ASP regulations.
             </p>
 
             {/* Quick Navigation */}
@@ -143,7 +143,7 @@ export default function NYCAlternateSideParkingGuide() {
               <div className="bg-blue-50 border-l-4 border-blue-500 p-6 my-6">
                 <p className="text-[var(--navy-800)] font-semibold mb-2">Historical Context:</p>
                 <p className="text-[var(--navy-700)]">
-                  The ASP program was established in the post-World War II era as NYC's population and vehicle ownership surged. Prior to ASP, street cleaning was irregular and inefficient. The program has evolved significantly, with modern street sweepers now equipped with GPS tracking and sophisticated cleaning technology.
+                  The ASP program was established in the post-World War II era as NYC&apos;s population and vehicle ownership surged. Prior to ASP, street cleaning was irregular and inefficient. The program has evolved significantly, with modern street sweepers now equipped with GPS tracking and sophisticated cleaning technology.
                 </p>
               </div>
             </section>
@@ -191,14 +191,14 @@ export default function NYCAlternateSideParkingGuide() {
                 How to Read ASP Signs
               </h2>
               <p className="text-lg text-[var(--navy-700)] mb-4 leading-relaxed">
-                NYC parking signs can be confusing, but understanding them is critical to avoiding tickets. Here's how to decode ASP signage:
+                NYC parking signs can be confusing, but understanding them is critical to avoiding tickets. Here&apos;s how to decode ASP signage:
               </p>
               <div className="bg-[var(--navy-50)] border border-[var(--navy-200)] rounded-lg p-6 mb-6">
                 <h3 className="text-xl font-semibold text-[var(--navy-800)] mb-3">
                   Standard ASP Sign Components:
                 </h3>
                 <ol className="list-decimal list-inside space-y-3 text-lg text-[var(--navy-700)]">
-                  <li><strong>"NO PARKING"</strong> - The primary restriction</li>
+                  <li><strong>&quot;NO PARKING&quot;</strong> - The primary restriction</li>
                   <li><strong>Days of the week</strong> - When the rule applies (e.g., "MON & THURS")</li>
                   <li><strong>Time window</strong> - Specific hours (e.g., "8AM - 11AM")</li>
                   <li><strong>Arrow indicators</strong> - Which direction the rule applies</li>
