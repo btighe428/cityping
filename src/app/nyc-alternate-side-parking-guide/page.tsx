@@ -222,7 +222,7 @@ export default function NYCAlternateSideParkingGuide() {
                 ASP Suspensions and Holidays
               </h2>
               <p className="text-lg text-[var(--navy-700)] mb-4 leading-relaxed">
-                One of the most important aspects of ASP is knowing when it's suspended. The NYC Department of Sanitation suspends ASP on legal holidays and certain religious observances.
+                One of the most important aspects of ASP is knowing when it&apos;s suspended. The NYC Department of Sanitation suspends ASP on legal holidays and certain religious observances.
               </p>
               <h3 className="text-2xl font-semibold text-[var(--navy-800)] mb-3">
                 When is ASP Suspended?
@@ -231,9 +231,9 @@ export default function NYCAlternateSideParkingGuide() {
                 ASP is typically suspended on the following holidays:
               </p>
               <ul className="list-disc list-inside space-y-2 mb-6 text-lg text-[var(--navy-700)]">
-                <li>New Year's Day</li>
+                <li>New Year&apos;s Day</li>
                 <li>Martin Luther King Jr. Day</li>
-                <li>Presidents' Day (Lincoln's Birthday & Washington's Birthday)</li>
+                <li>Presidents&apos; Day (Lincoln&apos;s Birthday & Washington&apos;s Birthday)</li>
                 <li>Memorial Day</li>
                 <li>Juneteenth</li>
                 <li>Independence Day</li>
@@ -323,7 +323,7 @@ export default function NYCAlternateSideParkingGuide() {
                     1. Set Phone Reminders
                   </h3>
                   <p className="text-[var(--navy-700)]">
-                    Create recurring reminders on your phone for your street's ASP schedule. Better yet, use CityPing for automated alerts.
+                    Create recurring reminders on your phone for your street&apos;s ASP schedule. Better yet, use CityPing for automated alerts.
                   </p>
                 </div>
                 <div className="bg-[var(--navy-50)] border border-[var(--navy-200)] rounded-lg p-6">
@@ -347,7 +347,7 @@ export default function NYCAlternateSideParkingGuide() {
                     4. Watch for the Street Sweeper
                   </h3>
                   <p className="text-[var(--navy-700)]">
-                    Once the street sweeper passes, you can usually return to your spot, even if it's before the posted end time.
+                    Once the street sweeper passes, you can usually return to your spot, even if it&apos;s before the posted end time.
                   </p>
                 </div>
                 <div className="bg-[var(--navy-50)] border border-[var(--navy-200)] rounded-lg p-6">
@@ -355,7 +355,7 @@ export default function NYCAlternateSideParkingGuide() {
                     5. Document Everything
                   </h3>
                   <p className="text-[var(--navy-700)]">
-                    If you believe you received a ticket in error, take photos of signs and your vehicle's position immediately.
+                    If you believe you received a ticket in error, take photos of signs and your vehicle&apos;s position immediately.
                   </p>
                 </div>
                 <div className="bg-[var(--navy-50)] border border-[var(--navy-200)] rounded-lg p-6">
