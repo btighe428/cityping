@@ -281,11 +281,15 @@ function buildBriefingSection(items: BriefingItem[]): string {
                   ${escapeHtml(item.title)}
                 </div>
                 ${
-                  item.body
+                  item.whyYouShouldCare
                     ? `<div style="font-size: 13px; color: ${COLORS.secondary}; margin-top: 2px; line-height: 1.4;">
+                    ${escapeHtml(item.whyYouShouldCare)}
+                  </div>`
+                    : item.body
+                      ? `<div style="font-size: 13px; color: ${COLORS.secondary}; margin-top: 2px; line-height: 1.4;">
                     ${escapeHtml(item.body.slice(0, 150))}${item.body.length > 150 ? "..." : ""}
                   </div>`
-                    : ""
+                      : ""
                 }
               </div>
             </div>
