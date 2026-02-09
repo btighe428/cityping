@@ -49,6 +49,15 @@ export interface SnowForecast {
   summary: string | null
 }
 
+// NYC 311 Calendar API response structure
+interface CalendarEntry {
+  CalendarType?: {
+    Name: string
+  }
+  CalendarDetailName?: string
+  CalendarDetailStatus?: string
+}
+
 export interface WeeklyStatus {
   weekRange: string
   startDate: string
@@ -79,9 +88,9 @@ async function fetchDayStatus(date: string): Promise<DayStatus | null> {
     const dt = DateTime.fromISO(date)
 
     // Find each calendar type
-    const aspEntry = data.results?.find((r: any) => r.CalendarType?.Name === 'Alternate Side Parking')
-    const collectionsEntry = data.results?.find((r: any) => r.CalendarType?.Name === 'Collections')
-    const schoolsEntry = data.results?.find((r: any) => r.CalendarType?.Name === 'Schools')
+    const aspEntry = data.results?.find((r: CalendarEntry) => r.CalendarType?.Name === 'Alternate Side Parking')
+    const collectionsEntry = data.results?.find((r: CalendarEntry) => r.CalendarType?.Name === 'Collections')
+    const schoolsEntry = data.results?.find((r: CalendarEntry) => r.CalendarType?.Name === 'Schools')
 
     const dayOfWeek = dt.weekday
 
