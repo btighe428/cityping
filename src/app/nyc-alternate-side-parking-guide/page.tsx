@@ -199,8 +199,8 @@ export default function NYCAlternateSideParkingGuide() {
                 </h3>
                 <ol className="list-decimal list-inside space-y-3 text-lg text-[var(--navy-700)]">
                   <li><strong>&quot;NO PARKING&quot;</strong> - The primary restriction</li>
-                  <li><strong>Days of the week</strong> - When the rule applies (e.g., "MON & THURS")</li>
-                  <li><strong>Time window</strong> - Specific hours (e.g., "8AM - 11AM")</li>
+                  <li><strong>Days of the week</strong> - When the rule applies (e.g., &quot;MON & THURS&quot;)</li>
+                  <li><strong>Time window</strong> - Specific hours (e.g., &quot;8AM - 11AM&quot;)</li>
                   <li><strong>Arrow indicators</strong> - Which direction the rule applies</li>
                   <li><strong>Additional regulations</strong> - May include meter rules, truck restrictions, etc.</li>
                 </ol>
@@ -211,7 +211,7 @@ export default function NYCAlternateSideParkingGuide() {
               <ul className="list-disc list-inside space-y-3 mb-6 text-lg text-[var(--navy-700)]">
                 <li><strong>Multiple signs:</strong> When multiple signs are posted, ALL regulations apply. Read every sign on the pole.</li>
                 <li><strong>Arrows matter:</strong> Pay attention to arrow directions - they indicate exactly where restrictions apply.</li>
-                <li><strong>Except clauses:</strong> Look for "EXCEPT" text which may indicate suspended periods or special exemptions.</li>
+                <li><strong>Except clauses:</strong> Look for &quot;EXCEPT&quot; text which may indicate suspended periods or special exemptions.</li>
                 <li><strong>Meter rules:</strong> ASP can coexist with meter parking - you may need to pay AND move for street cleaning.</li>
               </ul>
             </section>
