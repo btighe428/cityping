@@ -601,110 +601,6 @@ function getTransitRidershipScore(title: string, body: string): number {
   return totalRidership;
 }
 
-/**
- * Group transit alerts by subway line and summarize them.
- * Returns grouped alerts with human-readable summaries.
- */
-function groupTransitAlerts(alerts: ScoredAlertEvent[]): Array<{
-  lines: string[];
-  title: string;
-  summary: string;
-  affectedStations: string[];
-  severity: "high" | "medium" | "low";
-}> {
-  const groups = new Map<string, ScoredAlertEvent[]>();
-
-  // Group alerts by subway line
-  for (const alert of alerts) {
-    const text = `${alert.title || ""} ${alert.body || ""}`.toUpperCase();
-    const lineMatches = text.match(/\[([A-Z0-9]+)\]/g) || [];
-    const lines = lineMatches.map(m => m.replace(/[\[\]]/g, ""));
-
-    if (lines.length === 0) continue;
-
-    // Use first line as primary key for grouping
-    const primaryLine = lines[0];
-    if (!groups.has(primaryLine)) {
-      groups.set(primaryLine, []);
-    }
-    groups.get(primaryLine)!.push(alert);
-  }
-
-  // Summarize each group
-  const summaries = [];
-  for (const [line, lineAlerts] of groups) {
-    if (lineAlerts.length === 0) continue;
-
-    // Extract unique directions and issues
-    const directions = new Set<string>();
-    const issues = new Set<string>();
-    const stations = new Set<string>();
-    let hasDelays = false;
-    let hasServiceChanges = false;
-
-    for (const alert of lineAlerts) {
-      const text = `${alert.title || ""} ${alert.body || ""}`;
-      const upperText = text.toUpperCase();
-
-      // Detect direction
-      if (upperText.includes("BOUND")) {
-        const match = text.match(/(\w+)-bound/i);
-        if (match) directions.add(match[1]);
-      }
-
-      // Detect issue type
-      if (upperText.includes("DELAY")) hasDelays = true;
-      if (upperText.includes("SERVICE CHANGE") || upperText.includes("SKIP")) hasServiceChanges = true;
-      if (upperText.includes("SUSPENDED")) issues.add("suspended");
-      if (upperText.includes("LOCAL")) issues.add("running local");
-      if (upperText.includes("EXPRESS")) issues.add("running express");
-
-      // Extract station names (basic heuristic)
-      const stationMatches = text.match(/([A-Z][a-z]+(?:\s[A-Z][a-z]+)*)-(?:[A-Z][a-z]+\s)?(?:Av|Ave|St|Blvd|Plaza)/g);
-      if (stationMatches) {
-        stationMatches.forEach(s => stations.add(s.replace(/-(?:Av|Ave|St|Blvd|Plaza).*$/, "")));
-      }
-    }
-
-    // Build summary
-    const directionStr = directions.size > 0
-      ? Array.from(directions).slice(0, 2).join(" and ") + "-bound"
-      : "";
-
-    let issueStr = "";
-    if (hasDelays && hasServiceChanges) {
-      issueStr = "delays and service changes";
-    } else if (hasDelays) {
-      issueStr = "delays";
-    } else if (hasServiceChanges) {
-      issueStr = "service changes";
-    }
-
-    const summary = lineAlerts.length === 1
-      ? lineAlerts[0].body || lineAlerts[0].title || ""
-      : `Multiple ${issueStr} affecting ${directionStr} [${line}] trains. Consider alternate routes.`;
-
-    const severity: "high" | "medium" | "low" = lineAlerts.length >= 3 ? "high" :
-                                                  lineAlerts.length >= 2 ? "medium" : "low";
-
-    summaries.push({
-      lines: [line],
-      title: lineAlerts.length === 1
-        ? lineAlerts[0].title || `[${line}] Service Alert`
-        : `[${line}] Train ${issueStr || "issues"}`,
-      summary: summary.slice(0, 200),
-      affectedStations: Array.from(stations).slice(0, 5),
-      severity,
-    });
-  }
-
-  // Sort by severity (high -> medium -> low) then by number of alerts
-  return summaries.sort((a, b) => {
-    const severityOrder = { high: 3, medium: 2, low: 1 };
-    return severityOrder[b.severity] - severityOrder[a.severity];
-  });
-}
-
 function buildBriefingItems(
   alerts: ScoredAlertEvent[],
   unclustered: ClusterableArticle[],
@@ -723,21 +619,27 @@ function buildBriefingItems(
   });
   const otherAlerts = alerts.filter(a => !transitAlerts.includes(a));
 
-  // Group and summarize transit alerts by line
-  const transitSummaries = groupTransitAlerts(transitAlerts).slice(0, 5);
+  // Sort transit alerts by ridership impact (highest first) - same pattern as before
+  const sortedTransitAlerts = transitAlerts
+    .map(alert => ({
+      alert,
+      ridership: getTransitRidershipScore(alert.title || "", alert.body || ""),
+    }))
+    .sort((a, b) => b.ridership - a.ridership)
+    .slice(0, 5)  // Reduced from 8 to 5
+    .map(({ alert }) => alert);
 
-  // Add summarized transit items
-  for (const summary of transitSummaries) {
+  // Add high-ridership transit alerts with proper structure
+  for (const alert of sortedTransitAlerts) {
+    const curatedItem = curation?.curatedContent.find((c) => c.item.id === alert.id);
     items.push({
-      id: `transit-${summary.lines.join("-")}`,
-      title: summary.title,
-      body: summary.summary,
-      source: "MTA",
-      category: "transit",
-      icon: summary.severity === "high" ? "🚨" : summary.severity === "medium" ? "⚠️" : "🚇",
-      whyYouShouldCare: summary.affectedStations.length > 0
-        ? `Affects: ${summary.affectedStations.join(", ")}`
-        : undefined,
+      id: alert.id,
+      title: alert.title,
+      body: alert.body || "",
+      source: "CityPing",
+      category: alert.category || "breaking",
+      icon: "🚇",
+      whyYouShouldCare: curatedItem?.whyYouShouldCare,
     });
   }
 
