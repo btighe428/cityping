@@ -121,7 +121,7 @@ export default function NYCCongestionPricing() {
             </h1>
 
             <p className="text-xl text-[var(--navy-600)] mb-8 leading-relaxed">
-              As of January 5, 2025, New York City has implemented the nation's first congestion pricing program. This guide covers everything you need to know about tolls, exemptions, and strategies for minimizing costs.
+              As of January 5, 2025, New York City has implemented the nation&apos;s first congestion pricing program. This guide covers everything you need to know about tolls, exemptions, and strategies for minimizing costs.
             </p>
 
             {/* Toll Summary */}
@@ -150,7 +150,7 @@ export default function NYCCongestionPricing() {
                 What is Congestion Pricing?
               </h2>
               <p className="text-lg text-[var(--navy-700)] mb-4 leading-relaxed">
-                Congestion pricing is a traffic management strategy that charges drivers a toll to enter a designated zone during high-traffic periods. NYC's program targets the Central Business District (CBD) of Manhattan—the area south of and including 60th Street.
+                Congestion pricing is a traffic management strategy that charges drivers a toll to enter a designated zone during high-traffic periods. NYC&apos;s program targets the Central Business District (CBD) of Manhattan—the area south of and including 60th Street.
               </p>
               <p className="text-lg text-[var(--navy-700)] mb-4 leading-relaxed">
                 The program aims to:
@@ -165,7 +165,7 @@ export default function NYCCongestionPricing() {
               <div className="bg-blue-50 border-l-4 border-blue-500 p-6 my-6">
                 <p className="text-[var(--navy-800)] font-semibold mb-2">Historical Context</p>
                 <p className="text-[var(--navy-700)]">
-                  NYC joins London (2003), Stockholm (2006), Singapore (1975), and Milan (2012) in implementing congestion pricing. London's program reduced central traffic by 15% and generates over £200 million annually for transit investment. NYC's program is expected to be the largest by revenue in the world.
+                  NYC joins London (2003), Stockholm (2006), Singapore (1975), and Milan (2012) in implementing congestion pricing. London&apos;s program reduced central traffic by 15% and generates over £200 million annually for transit investment. NYC&apos;s program is expected to be the largest by revenue in the world.
                 </p>
               </div>
             </section>
@@ -176,7 +176,7 @@ export default function NYCCongestionPricing() {
                 Where Does It Apply?
               </h2>
               <p className="text-lg text-[var(--navy-700)] mb-4 leading-relaxed">
-                The congestion pricing zone covers Manhattan's Central Business District:
+                The congestion pricing zone covers Manhattan&apos;s Central Business District:
               </p>
               <div className="bg-[var(--navy-50)] rounded-lg p-6 mb-6">
                 <h3 className="font-semibold text-[var(--navy-800)] mb-3">Zone Boundaries</h3>
@@ -190,7 +190,7 @@ export default function NYCCongestionPricing() {
               <div className="bg-green-50 border-l-4 border-green-500 p-6 my-6">
                 <h3 className="font-semibold text-[var(--navy-800)] mb-2">Through-Traffic Note</h3>
                 <p className="text-[var(--navy-700)]">
-                  If you're driving on the FDR Drive, West Side Highway, or through the Hugh L. Carey Tunnel without exiting into the CBD, you are NOT charged. The toll only applies when entering Manhattan streets within the zone.
+                  If you&apos;re driving on the FDR Drive, West Side Highway, or through the Hugh L. Carey Tunnel without exiting into the CBD, you are NOT charged. The toll only applies when entering Manhattan streets within the zone.
                 </p>
               </div>
             </section>
@@ -281,7 +281,7 @@ export default function NYCCongestionPricing() {
                 <h3 className="font-semibold text-[var(--navy-800)] mb-3">How to Apply for Low-Income Discount</h3>
                 <ol className="list-decimal list-inside space-y-2 text-[var(--navy-700)]">
                   <li>Visit <a href="https://new.mta.info" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">new.mta.info</a></li>
-                  <li>Create an E-ZPass NY account if you don't have one</li>
+                  <li>Create an E-ZPass NY account if you don&apos;t have one</li>
                   <li>Submit proof of income (tax returns or benefit eligibility)</li>
                   <li>Residents earning under ~$50,000/year typically qualify</li>
                 </ol>
@@ -359,7 +359,7 @@ export default function NYCCongestionPricing() {
                 </table>
               </div>
               <p className="text-[var(--navy-600)]">
-                Invested at 7% annual return, the daily commuter's congestion toll cost over 10 years would compound to ~$31,000 in lost wealth creation. This makes transit alternatives increasingly attractive from a financial planning perspective.
+                Invested at 7% annual return, the daily commuter&apos;s congestion toll cost over 10 years would compound to ~$31,000 in lost wealth creation. This makes transit alternatives increasingly attractive from a financial planning perspective.
               </p>
             </section>
 
