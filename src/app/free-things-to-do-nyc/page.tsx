@@ -132,7 +132,7 @@ export default function FreeThingsNYC() {
                 Free & Pay-What-You-Wish Museums
               </h2>
               <p className="text-lg text-[var(--navy-700)] mb-6 leading-relaxed">
-                NYC's world-class museums offer numerous free admission opportunities. Here's your complete guide:
+                NYC&apos;s world-class museums offer numerous free admission opportunities. Here&apos;s your complete guide:
               </p>
 
               <div className="space-y-4">
@@ -340,9 +340,9 @@ export default function FreeThingsNYC() {
               <ul className="list-disc list-inside space-y-2 text-lg text-[var(--navy-700)]">
                 <li><strong>Chelsea Market:</strong> Many vendors offer samples</li>
                 <li><strong>Eataly:</strong> Frequent tasting events</li>
-                <li><strong>Zabar's:</strong> Free samples at the counter</li>
+                <li><strong>Zabar&apos;s:</strong> Free samples at the counter</li>
                 <li><strong>Costco:</strong> Membership not required for food court in NYC</li>
-                <li><strong>Trader Joe's:</strong> Coffee and sample stations</li>
+                <li><strong>Trader Joe&apos;s:</strong> Coffee and sample stations</li>
                 <li><strong>Grand Central Market:</strong> Cheese and specialty food samples</li>
               </ul>
             </section>

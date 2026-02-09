@@ -246,9 +246,9 @@ export default async function NeighborhoodPage({ params }: PageProps) {
               </p>
               <p>
                 NYC suspends ASP for approximately 34 holidays per year. During
-                suspensions, you don't need to move your car for street cleaning.
+                suspensions, you don&apos;t need to move your car for street cleaning.
                 However, <strong>parking meters remain in effect</strong> on most
-                holidays - only major holidays like Christmas, New Year's, and
+                holidays - only major holidays like Christmas, New Year&apos;s, and
                 Thanksgiving suspend both ASP and meters.
               </p>
               <p>

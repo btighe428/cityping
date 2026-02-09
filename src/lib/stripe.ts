@@ -18,7 +18,7 @@ function getStripeClient(): Stripe {
     // Return a mock client for build-time when env var is not set
     // This allows Next.js to build without requiring Stripe credentials
     // In actual production runtime, this should fail when called
-    // eslint-disable-next-line no-console
+     
     console.warn('STRIPE_SECRET_KEY not set - using mock Stripe client')
     return mockStripeClient as Stripe
   }
