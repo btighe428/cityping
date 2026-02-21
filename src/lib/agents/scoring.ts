@@ -279,14 +279,14 @@ const NYC_TERMS = {
     "kingsbridge", "morris park", "pelham bay", "city island", "highbridge",
   ],
 
-  // Transit (high relevance)
+  // Transit (high relevance) — NYC-specific only, no generic "bus"/"train"
   transit: [
     "mta", "subway", "metro-north", "lirr", "nj transit", "path",
-    "bus", "ferry", "nyc ferry", "station", "train", "commute",
+    "nyc ferry", "nyc bus", "mta bus", "city bus",
     "a train", "b train", "c train", "d train", "e train", "f train", "g train",
     "j train", "l train", "m train", "n train", "q train", "r train", "w train",
     "1 train", "2 train", "3 train", "4 train", "5 train", "6 train", "7 train",
-    "service change", "delay", "suspended", "shuttle bus",
+    "service change", "shuttle bus",
   ],
 
   // NYC landmarks (medium relevance)
@@ -428,6 +428,29 @@ export function scoreRelevance(text: string, source?: string): number {
     if (lowerSource.includes(localSource) || lowerText.includes(localSource)) {
       score += 10;
       break;
+    }
+  }
+
+  // Penalize content about other US cities (unless NYC is also mentioned)
+  const NON_NYC_CITY_PATTERNS = [
+    /\blos angeles\b|\bladot\b|\bl\.a\.\b/i,
+    /\bchicago\b|\bcta\b|\bwintec\b/i,
+    /\bboston\b|\bmbta\b/i,
+    /\bsan francisco\b|\bbart\b|\bcaltrain\b/i,
+    /\bwashington d\.?c\.?\b|\bwmata\b/i,
+    /\bseattle\b|\bking county metro\b/i,
+    /\bphiladelphia\b|\bsepta\b/i,
+    /\bmiami\b|\bmdta\b/i,
+    /\bhouston\b|\bmetro houston\b/i,
+    /\batlanta\b|\bmarta\b/i,
+  ];
+  const hasNycMention = /\bnyc\b|\bnew york\b|\bmanhattan\b|\bbrooklyn\b|\bqueens\b|\bbronx\b|\bstaten island\b/i.test(lowerText);
+  if (!hasNycMention) {
+    for (const pattern of NON_NYC_CITY_PATTERNS) {
+      if (pattern.test(lowerText)) {
+        score -= 50; // Heavy penalty — this is about another city
+        break;
+      }
     }
   }
 
@@ -842,6 +865,31 @@ const BLOCKED_CONTENT_PATTERNS: RegExp[] = [
   /celebrity news/i,
   /hollywood gossip/i,
   /red carpet/i,
+
+  // Opinion/editorial/letters (not news)
+  /^letter to the editor/i,
+  /\bletter to the editor\b/i,
+  /\bop-ed\b/i,
+  /\beditorial board\b/i,
+  /\bopinion:/i,
+
+  // Link roundups / newsletter digest items (not original reporting)
+  /afternoon links/i,
+  /morning links/i,
+  /evening links/i,
+  /\bextra extra\b/i,
+  /here are your .* links/i,
+  /daily links/i,
+  /weekend links/i,
+
+  // Non-NYC transit agencies (other cities)
+  /\bladot\b/i,     // LA Dept of Transportation
+  /\bbart\b(?!.*new york)/i,   // Bay Area Rapid Transit
+  /\bcaltrain\b/i,
+  /\bwmata\b/i,     // DC Metro
+  /\bmbta\b/i,      // Boston T
+  /\bsepta\b/i,     // Philadelphia
+  /\bmarta\b/i,     // Atlanta
 ];
 
 /**

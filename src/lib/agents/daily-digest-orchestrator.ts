@@ -702,13 +702,18 @@ function buildBriefingItems(
   }
 
   // Fill remaining slots with top news
-  for (const article of unclustered.slice(0, maxItems - items.length)) {
+  // Skip articles with AI refusal summaries or blocked content
+  const AI_REFUSAL_PREFIXES = ["i cannot provide", "i can't provide", "i'm unable to", "as an ai"];
+  for (const article of unclustered) {
     if (items.length >= maxItems) break;
+    const summary = article.summary || "";
+    const summaryLower = summary.toLowerCase();
+    if (AI_REFUSAL_PREFIXES.some(p => summaryLower.startsWith(p))) continue;
     const curatedItem = curation?.curatedContent.find((c) => c.item.id === article.id);
     items.push({
       id: article.id,
       title: article.title,
-      body: article.summary,
+      body: summary,
       source: article.source,
       category: "news",
       icon: "📰",

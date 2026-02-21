@@ -358,7 +358,7 @@ function buildAgendaSection(
               ${escapeHtml(event.title)}
             </div>
             <div style="font-size: 12px; color: ${COLORS.muted}; margin-top: 2px;">
-              ${event.time ? `${event.time}` : ""}
+              ${event.time && !event.time.match(/^12:00\s*AM/i) ? `${event.time}` : "All day"}
               ${event.venue ? ` &bull; ${escapeHtml(event.venue)}` : ""}
               ${event.neighborhood ? ` &bull; ${escapeHtml(event.neighborhood)}` : ""}
             </div>
