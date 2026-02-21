@@ -431,24 +431,32 @@ export function scoreRelevance(text: string, source?: string): number {
     }
   }
 
-  // Penalize content about other US cities (unless NYC is also mentioned)
-  const NON_NYC_CITY_PATTERNS = [
+  // Penalize content about other places (unless NYC is also mentioned)
+  const NON_NYC_GEO_PATTERNS = [
+    // US cities
     /\blos angeles\b|\bladot\b|\bl\.a\.\b/i,
-    /\bchicago\b|\bcta\b|\bwintec\b/i,
+    /\bchicago\b|\bcta transit\b/i,
     /\bboston\b|\bmbta\b/i,
     /\bsan francisco\b|\bbart\b|\bcaltrain\b/i,
     /\bwashington d\.?c\.?\b|\bwmata\b/i,
     /\bseattle\b|\bking county metro\b/i,
     /\bphiladelphia\b|\bsepta\b/i,
-    /\bmiami\b|\bmdta\b/i,
-    /\bhouston\b|\bmetro houston\b/i,
-    /\batlanta\b|\bmarta\b/i,
+    /\bmiami\b|\bhouston\b|\batlanta\b|\bdenver\b|\blas vegas\b/i,
+    // US states (non-NY)
+    /\bcalifornia\b|\blahe tahoe\b|\bsilicon valley\b/i,
+    /\btexas\b|\bflorida\b|\bgeorgia\b|\bwashington state\b/i,
+    // Upstate NY (not NYC) — penalize when only upstate counties mentioned
+    /\balbany\b|\bbuffalo\b|\bsyracuse\b|\brochester\b|\bithaca\b/i,
+    /\butica\b|\bschenectady\b|\btroy, ny\b/i,
+    // Canada / international
+    /\bcanadian\b|\bcanada\b|\btoronto\b|\bvancouver\b|\bmontreal\b/i,
+    /\buk\b|\bbritain\b|\blondon\b|\bparis\b|\bberlin\b|\brome\b/i,
   ];
-  const hasNycMention = /\bnyc\b|\bnew york\b|\bmanhattan\b|\bbrooklyn\b|\bqueens\b|\bbronx\b|\bstaten island\b/i.test(lowerText);
+  const hasNycMention = /\bnyc\b|\bnew york city\b|\bnew york,\b|\bmanhattan\b|\bbrooklyn\b|\bqueens\b|\bbronx\b|\bstaten island\b/i.test(lowerText);
   if (!hasNycMention) {
-    for (const pattern of NON_NYC_CITY_PATTERNS) {
+    for (const pattern of NON_NYC_GEO_PATTERNS) {
       if (pattern.test(lowerText)) {
-        score -= 50; // Heavy penalty — this is about another city
+        score -= 50; // Heavy penalty — this is about another place
         break;
       }
     }
@@ -872,6 +880,10 @@ const BLOCKED_CONTENT_PATTERNS: RegExp[] = [
   /\bop-ed\b/i,
   /\beditorial board\b/i,
   /\bopinion:/i,
+  /^i helped /i,
+  /^i (often|always|never|used to|once) /i,
+  /^as a (board.certified|licensed|former|retired|practicing)/i,
+  /\bmust end\b.*\bit was wrong\b|\bit was wrong\b.*\bmust end\b/i,
 
   // Link roundups / newsletter digest items (not original reporting)
   /afternoon links/i,

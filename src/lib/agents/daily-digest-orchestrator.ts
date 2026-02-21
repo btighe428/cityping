@@ -44,6 +44,7 @@ import {
   selectBestContentV2Semantic,
   type ContentSelectionV2Semantic,
 } from "./data-quality-agent";
+import { isBlockedContent } from "./scoring";
 import { curateContentV2 } from "./content-curator-agent";
 import { personalizeContentV2 } from "./personalization-agent";
 import { produceHealthReport } from "./robustness-agent";
@@ -702,13 +703,14 @@ function buildBriefingItems(
   }
 
   // Fill remaining slots with top news
-  // Skip articles with AI refusal summaries or blocked content
+  // Skip articles with AI refusal summaries or that fail content quality checks
   const AI_REFUSAL_PREFIXES = ["i cannot provide", "i can't provide", "i'm unable to", "as an ai"];
   for (const article of unclustered) {
     if (items.length >= maxItems) break;
     const summary = article.summary || "";
     const summaryLower = summary.toLowerCase();
     if (AI_REFUSAL_PREFIXES.some(p => summaryLower.startsWith(p))) continue;
+    if (isBlockedContent(article.title, summary)) continue;
     const curatedItem = curation?.curatedContent.find((c) => c.item.id === article.id);
     items.push({
       id: article.id,
