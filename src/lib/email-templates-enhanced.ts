@@ -605,12 +605,24 @@ export function buildEnhancedDigestHtml(
         ${options.premiumSections?.sections.map(s => s.html).join('') || ''}
         ${options.premiumSections?.teaser?.html || ''}
 
-        <!-- Enhanced Data Visualizations (Premium) -->
-        ${options.enhancedSections?.commuteDashboard || ''}
-        ${options.enhancedSections?.weatherTimeline || ''}
-        ${options.enhancedSections?.trafficTrends || ''}
-        ${options.enhancedSections?.citiBikeDashboard || ''}
-        ${options.enhancedSections?.aspCalendar || ''}
+        <!-- Enhanced Data Visualizations (only render if not already covered by a premium section) -->
+        ${(() => {
+          const premiumTypes = new Set(options.premiumSections?.sections.map(s => s.type) ?? []);
+          const e = options.enhancedSections;
+          if (!e) return '';
+          return [
+            // Commute dashboard: skip if both traffic and citibike are already shown
+            (!premiumTypes.has('traffic') || !premiumTypes.has('citibike')) ? (e.commuteDashboard || '') : '',
+            // Weather timeline: skip if weather_radar premium section present (header already shows forecast too)
+            !premiumTypes.has('weather_radar') ? (e.weatherTimeline || '') : '',
+            // Traffic trends: skip if traffic premium section present
+            !premiumTypes.has('traffic') ? (e.trafficTrends || '') : '',
+            // CitiBike dashboard: skip if citibike premium section present
+            !premiumTypes.has('citibike') ? (e.citiBikeDashboard || '') : '',
+            // ASP calendar: always show (no premium section equivalent)
+            e.aspCalendar || '',
+          ].join('');
+        })()}
 
         <!-- Main Content -->
         ${horizonSection}
