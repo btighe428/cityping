@@ -627,7 +627,6 @@ export function buildEnhancedDigestHtml(
         <!-- Main Content -->
         ${horizonSection}
         ${deepDiveSection}
-        ${briefingSection}
 
         <!-- Upgrade CTA -->
         ${!options.premiumSections?.teaser ? upgradeCta : ''}
