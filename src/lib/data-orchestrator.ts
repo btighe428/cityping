@@ -99,6 +99,14 @@ export const DATA_SOURCES: Record<string, DataSourceConfig> = {
     critical: false,
     validator: validateMtaAlerts,
   },
+  ferry_alerts: {
+    name: "Ferry Alerts",
+    endpoint: "/api/jobs/scrape-ferry",
+    expectedFreshness: 20, // 20 minutes - ferry schedules less frequent
+    minItemsRequired: 0, // Can have 0 if no alerts
+    critical: false,
+    validator: validateFerryAlerts,
+  },
   sample_sales: {
     name: "Sample Sales",
     endpoint: "/api/jobs/ingest/sample-sales",
@@ -226,6 +234,11 @@ function validateMuseums(data: unknown): ValidationResult {
 }
 
 function validateCuratedNews(data: unknown): ValidationResult {
+  const result: ValidationResult = { valid: true, errors: [], warnings: [], itemCount: 0 };
+  return result;
+}
+
+function validateFerryAlerts(data: unknown): ValidationResult {
   const result: ValidationResult = { valid: true, errors: [], warnings: [], itemCount: 0 };
   return result;
 }
@@ -451,6 +464,29 @@ export async function checkDataFreshness(): Promise<Map<string, DataSourceStatus
     errors: [],
     warnings: diningStale ? ["Data is stale"] : [],
     healthy: !diningStale,
+  });
+
+  // Check ferry alerts
+  const ferryConfig = DATA_SOURCES.ferry_alerts;
+  const ferryCount = await prisma.ferryAlert.count({
+    where: { isActive: true },
+  });
+  const ferryLastAlert = await prisma.ferryAlert.findFirst({
+    orderBy: { fetchedAt: "desc" },
+    select: { fetchedAt: true },
+  });
+  const ferryStale = !ferryLastAlert ||
+    now.diff(DateTime.fromJSDate(ferryLastAlert.fetchedAt), "minutes").minutes > ferryConfig.expectedFreshness;
+
+  statuses.set("ferry_alerts", {
+    name: ferryConfig.name,
+    lastUpdated: ferryLastAlert?.fetchedAt || null,
+    itemCount: ferryCount,
+    isStale: ferryStale,
+    isBelowThreshold: false, // Ferry can have 0 if no alerts
+    errors: [],
+    warnings: ferryStale ? ["Data is stale"] : [],
+    healthy: !ferryStale,
   });
 
   // Check museums (static config)

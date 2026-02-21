@@ -17,11 +17,6 @@ export type EmailType =
   | 'monthly_recap'
   | 'welcome'
   | 'system'
-  // Time-slot email system (v2)
-  | 'morning_briefing'
-  | 'midday_pulse'
-  | 'evening_winddown'
-  // Time-slot based email types
   | 'morning_briefing'
   | 'midday_pulse'
   | 'evening_winddown'
@@ -327,14 +322,14 @@ export async function getEmailStats(
       },
     },
     _count: {
-      status: true,
+      _all: true,
     },
   })
 
   return {
-    total: stats.reduce((sum, s) => sum + s._count.status, 0),
-    sent: stats.find(s => s.status === 'sent')?._count.status || 0,
-    failed: stats.find(s => s.status === 'failed')?._count.status || 0,
-    pending: stats.find(s => s.status === 'pending')?._count.status || 0,
+    total: stats.reduce((sum, s) => sum + s._count._all, 0),
+    sent: stats.find(s => s.status === 'sent')?._count._all ?? 0,
+    failed: stats.find(s => s.status === 'failed')?._count._all ?? 0,
+    pending: stats.find(s => s.status === 'pending')?._count._all ?? 0,
   }
 }

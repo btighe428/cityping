@@ -60,6 +60,7 @@ export interface SystemHealth {
  */
 export const JOB_CONFIGS: Record<string, { displayName: string; frequency: string; alertAfterMissed: number }> = {
   "ingest-mta-alerts": { displayName: "MTA Alerts", frequency: "5m", alertAfterMissed: 3 },
+  "scrape-ferry": { displayName: "Ferry Alerts", frequency: "15m", alertAfterMissed: 3 },
   "ingest-nyc-events": { displayName: "NYC Events", frequency: "24h", alertAfterMissed: 2 },
   "ingest-sample-sales": { displayName: "Sample Sales", frequency: "24h", alertAfterMissed: 2 },
   "ingest-housing-lotteries": { displayName: "Housing Lotteries", frequency: "24h", alertAfterMissed: 2 },

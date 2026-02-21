@@ -73,6 +73,16 @@ export interface WeatherData {
   summary: string;
   hasSnow?: boolean;
   snowSummary?: string | null;
+  // 7-day forecast
+  forecast?: Array<{
+    day: string;      // "Mon", "Tue", etc.
+    date: string;     // ISO date
+    high: number;
+    low: number | null;
+    condition: string;
+    emoji: string;
+    precipChance: number | null;
+  }>;
 }
 
 /**
@@ -239,6 +249,37 @@ export async function generateDailyDigest(
       const low = nightPeriod?.temperature || high - 10;
       const condition = dayPeriod?.shortForecast || forecast.days[0].shortForecast;
 
+      // Build 7-day forecast from NWS data
+      // NWS returns periods (day/night pairs), so we need to combine them
+      const forecastDays: WeatherData["forecast"] = [];
+      const seenDates = new Set<string>();
+
+      for (const period of forecast.days) {
+        const date = period.date;
+        if (seenDates.has(date)) continue;
+        seenDates.add(date);
+
+        // Find day and night periods for this date
+        const dayP = forecast.days.find(d => d.date === date && !d.name.toLowerCase().includes("night"));
+        const nightP = forecast.days.find(d => d.date === date && d.name.toLowerCase().includes("night"));
+
+        if (dayP || nightP) {
+          const dayHigh = dayP?.temperature || nightP?.temperature || 0;
+          const dayLow = nightP?.temperature || null;
+          const dayCondition = dayP?.shortForecast || nightP?.shortForecast || "";
+
+          forecastDays.push({
+            day: period.dayOfWeek.slice(0, 3),
+            date,
+            high: dayHigh,
+            low: dayLow,
+            condition: dayCondition,
+            emoji: getWeatherEmoji(dayCondition),
+            precipChance: dayP?.probabilityOfPrecipitation || nightP?.probabilityOfPrecipitation || null,
+          });
+        }
+      }
+
       weather = {
         temp: high,
         high,
@@ -248,9 +289,10 @@ export async function generateDailyDigest(
         summary: `${high}°/${low}° ${condition}`,
         hasSnow: forecast.hasSignificantSnow,
         snowSummary: forecast.snowSummary,
+        forecast: forecastDays.slice(0, 7), // 7 days max
       };
       stages.weather.success = true;
-      console.log(`    ✓ ${weather.emoji} ${weather.summary}`);
+      console.log(`    ✓ ${weather.emoji} ${weather.summary} (${forecastDays.length}-day forecast)`);
     }
   } catch (error) {
     errors.push(`Weather: ${error instanceof Error ? error.message : "Unknown"}`);
@@ -290,8 +332,8 @@ export async function generateDailyDigest(
     contentResult = await selectBestContentV2Semantic({
       semanticEnabled: true,
       maxNews: 120,
-      maxAlerts: 80,
-      minQualityScore: 30,
+      maxAlerts: 5,
+      minQualityScore: 50,
     });
     stages.quality.itemsSelected = contentResult.news.length + contentResult.alerts.length;
     stages.quality.success = true;
@@ -449,9 +491,9 @@ export async function generateDailyDigest(
   stages.horizon.durationMs = Date.now() - horizonStart;
 
   // =========================================================================
-  // BUILD BRIEFING ITEMS
+  // BUILD BRIEFING ITEMS (max 6 headlines for clean digest)
   // =========================================================================
-  const briefingItems = buildBriefingItems(alerts, unclustered, curation, 32);
+  const briefingItems = buildBriefingItems(alerts, unclustered, curation, 6);
 
   // =========================================================================
   // BUILD AGENDA
@@ -619,18 +661,19 @@ function buildBriefingItems(
   });
   const otherAlerts = alerts.filter(a => !transitAlerts.includes(a));
 
-  // Sort transit alerts by ridership impact (highest first) - same pattern as before
+  // Sort transit alerts by ridership impact (highest first)
   const sortedTransitAlerts = transitAlerts
     .map(alert => ({
       alert,
       ridership: getTransitRidershipScore(alert.title || "", alert.body || ""),
     }))
     .sort((a, b) => b.ridership - a.ridership)
-    .slice(0, 5)  // Reduced from 8 to 5
+    .slice(0, 2)  // Max 2 transit alerts in tight 6-item briefing
     .map(({ alert }) => alert);
 
   // Add high-ridership transit alerts with proper structure
   for (const alert of sortedTransitAlerts) {
+    if (items.length >= maxItems) break;
     const curatedItem = curation?.curatedContent.find((c) => c.item.id === alert.id);
     items.push({
       id: alert.id,
@@ -643,8 +686,9 @@ function buildBriefingItems(
     });
   }
 
-  // Add other (non-transit) alerts
-  for (const alert of otherAlerts.slice(0, 8)) {
+  // Add other (non-transit) alerts - max 2
+  for (const alert of otherAlerts.slice(0, 2)) {
+    if (items.length >= maxItems) break;
     const curatedItem = curation?.curatedContent.find((c) => c.item.id === alert.id);
     items.push({
       id: alert.id,
@@ -657,8 +701,9 @@ function buildBriefingItems(
     });
   }
 
-  // Add unclustered news
-  for (const article of unclustered.slice(0, 12)) {
+  // Fill remaining slots with top news
+  for (const article of unclustered.slice(0, maxItems - items.length)) {
+    if (items.length >= maxItems) break;
     const curatedItem = curation?.curatedContent.find((c) => c.item.id === article.id);
     items.push({
       id: article.id,

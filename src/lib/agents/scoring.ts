@@ -795,6 +795,69 @@ export function areTitlesSimilar(
 }
 
 // =============================================================================
+// CONTENT BLOCKLIST - Filters out non-NYC and low-value content
+// =============================================================================
+
+/**
+ * Patterns that indicate content should be blocked from the digest.
+ * Matches are case-insensitive against title + body text.
+ */
+const BLOCKED_CONTENT_PATTERNS: RegExp[] = [
+  // Advice/lifestyle columns
+  /dear abby/i,
+  /advice column/i,
+  /horoscope/i,
+  /crossword/i,
+  /ask amy/i,
+  /miss manners/i,
+  /agony aunt/i,
+  /dear prudence/i,
+  /carolyn hax/i,
+
+  // National politics (unless NYC-specific)
+  /trump administration(?!.*nyc|.*new york city|.*mayor)/i,
+  /congress votes(?!.*new york)/i,
+  /white house(?!.*mayor|.*nyc|.*de blasio|.*adams)/i,
+  /supreme court(?!.*nyc|.*new york)/i,
+  /presidential(?!.*nyc|.*new york)/i,
+
+  // Obituaries/deaths (unless notable NYC figure)
+  /\bobituary\b/i,
+  /\bobituaries\b/i,
+  /passed away(?!.*nyc|.*new york|.*brooklyn|.*queens|.*bronx|.*manhattan)/i,
+  /dies at \d+(?!.*nyc|.*new york|.*brooklyn|.*queens|.*bronx|.*manhattan)/i,
+
+  // Sports scores (not NYC teams - allow Yankees, Mets, Knicks, Rangers, etc.)
+  /nfl scores(?!.*jets|.*giants)/i,
+  /mlb standings(?!.*yankees|.*mets)/i,
+  /nba scores(?!.*knicks|.*nets)/i,
+  /nhl scores(?!.*rangers|.*islanders)/i,
+
+  // Generic wire content
+  /\bap wire\b/i,
+  /\bassociated press\b(?!.*nyc|.*new york)/i,
+  /\breuters\b(?!.*nyc|.*new york)/i,
+
+  // Syndicated entertainment
+  /celebrity news/i,
+  /hollywood gossip/i,
+  /red carpet/i,
+];
+
+/**
+ * Check if content should be blocked from the digest based on title and body.
+ * Returns true if content matches any blocked pattern.
+ *
+ * @param title - Content title
+ * @param body - Optional content body/summary
+ * @returns True if content should be blocked
+ */
+export function isBlockedContent(title: string, body?: string | null): boolean {
+  const text = `${title} ${body || ""}`;
+  return BLOCKED_CONTENT_PATTERNS.some(pattern => pattern.test(text));
+}
+
+// =============================================================================
 // SCORING THRESHOLDS
 // =============================================================================
 

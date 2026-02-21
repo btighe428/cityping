@@ -17,6 +17,7 @@ import { JobMonitor } from './job-monitor'
 import { DateTime } from 'luxon'
 import { checkEmailFrequencyCap } from './frequency-cap'
 import { MESSAGE_PRIORITY } from './delivery-config'
+import { buildPremiumSections, isUserPremium, getPremiumQuickSummary } from './premium/email-sections'
 
 // =============================================================================
 // TYPES & CONFIGURATION
@@ -376,10 +377,14 @@ export interface SlotContent {
 }
 
 export interface EmailSection {
-  type: 'breaking' | 'news' | 'weather' | 'transit' | 'parking' | 'events' | 'day_ahead' | 'deals'
+  type: 'breaking' | 'news' | 'weather' | 'transit' | 'parking' | 'events' | 'day_ahead' | 'deals' | 'premium'
   title: string
   priority: number
   items: EmailItem[]
+  // Premium section fields
+  premiumHtml?: string
+  premiumText?: string
+  isPremiumOnly?: boolean
 }
 
 export interface EmailItem {
@@ -401,6 +406,9 @@ async function buildMorningContent(
 
   // Fetch overnight news (since 9pm yesterday)
   const sinceLastNight = now.minus({ hours: 12 }).toJSDate()
+
+  // Check if user is premium for premium sections
+  const isPremium = userId ? await isUserPremium(userId) : false
 
   const [alertEvents, cityEvents, newsArticles] = await Promise.all([
     prisma.alertEvent.findMany({
@@ -505,9 +513,43 @@ async function buildMorningContent(
     })
   }
 
+  // Premium sections (or teaser for free users)
+  if (userId) {
+    const premiumResult = await buildPremiumSections(userId, isPremium)
+
+    if (isPremium && premiumResult.sections.length > 0) {
+      // Add premium sections to the email
+      for (const premiumSection of premiumResult.sections) {
+        sections.push({
+          type: 'premium',
+          title: premiumSection.title,
+          priority: premiumSection.priority,
+          items: [],
+          premiumHtml: premiumSection.html,
+          premiumText: premiumSection.text,
+          isPremiumOnly: true,
+        })
+      }
+    } else if (premiumResult.teaser) {
+      // Add teaser for free users
+      sections.push({
+        type: 'premium',
+        title: 'Premium Features',
+        priority: 40, // Lower priority for teaser
+        items: [],
+        premiumHtml: premiumResult.teaser.html,
+        premiumText: premiumResult.teaser.text,
+        isPremiumOnly: false,
+      })
+    }
+  }
+
+  // Get premium quick summary for preheader if premium user
+  const premiumSummary = userId && isPremium ? await getPremiumQuickSummary(userId) : null
+
   return {
     subject: `CityPing Morning Briefing - ${now.toFormat('EEEE, MMMM d')}`,
-    preheader: `${breakingAlerts.length > 0 ? `${breakingAlerts.length} breaking alerts • ` : ''}${newsArticles.length} stories • ${cityEvents.length} events today`,
+    preheader: `${premiumSummary ? `${premiumSummary} • ` : ''}${breakingAlerts.length > 0 ? `${breakingAlerts.length} breaking alerts • ` : ''}${newsArticles.length} stories • ${cityEvents.length} events today`,
     sections: sections.sort((a, b) => b.priority - a.priority),
     metadata: {
       contentGeneratedAt: new Date(),
@@ -622,6 +664,9 @@ async function buildEveningContent(
   const tomorrowStart = tomorrow.startOf('day').toJSDate()
   const tomorrowEnd = tomorrow.endOf('day').toJSDate()
 
+  // Check if user is premium for premium sections
+  const isPremium = userId ? await isUserPremium(userId) : false
+
   const [parkingAlerts, tomorrowEvents, suspensions] = await Promise.all([
     prisma.alertEvent.findMany({
       where: {
@@ -689,6 +734,39 @@ async function buildEveningContent(
         metadata: { venue: e.venue || undefined, neighborhood: e.neighborhood || undefined },
       })),
     })
+  }
+
+  // Premium sections for evening (tomorrow's weather decision, etc.)
+  if (userId) {
+    const premiumResult = await buildPremiumSections(userId, isPremium)
+
+    if (isPremium && premiumResult.sections.length > 0) {
+      // Only include coat/umbrella (for tomorrow) and one thing in evening
+      const relevantSections = premiumResult.sections.filter(s =>
+        ['coat_umbrella', 'one_thing', 'environmental'].includes(s.type)
+      )
+      for (const premiumSection of relevantSections) {
+        sections.push({
+          type: 'premium',
+          title: premiumSection.title,
+          priority: premiumSection.priority,
+          items: [],
+          premiumHtml: premiumSection.html,
+          premiumText: premiumSection.text,
+          isPremiumOnly: true,
+        })
+      }
+    } else if (premiumResult.teaser) {
+      sections.push({
+        type: 'premium',
+        title: 'Premium Features',
+        priority: 40,
+        items: [],
+        premiumHtml: premiumResult.teaser.html,
+        premiumText: premiumResult.teaser.text,
+        isPremiumOnly: false,
+      })
+    }
   }
 
   return {
@@ -817,7 +895,13 @@ function generateEmailHtml(
 <body style="font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
   <h1 style="color: #1a1a1a;">${TIME_SLOT_CONFIG[slot].displayName}</h1>
   <p style="color: #666;">${content.preheader}</p>
-  ${content.sections.map(section => `
+  ${content.sections.map(section => {
+    // Handle premium sections with custom HTML
+    if (section.type === 'premium' && section.premiumHtml) {
+      return section.premiumHtml
+    }
+    // Standard sections
+    return `
     <section style="margin: 24px 0; border-top: 1px solid #eee; padding-top: 16px;">
       <h2 style="color: #333; font-size: 18px;">${section.title}</h2>
       ${section.items.map(item => `
@@ -828,10 +912,10 @@ function generateEmailHtml(
         </div>
       `).join('')}
     </section>
-  `).join('')}
+  `}).join('')}
   <footer style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #eee; color: #999; font-size: 12px;">
     <p>You're receiving this because you're subscribed to CityPing ${TIME_SLOT_CONFIG[slot].displayName}.</p>
-    <p><a href="https://cityping.net/preferences">Manage preferences</a></p>
+    <p><a href="https://cityping.net/preferences">Manage preferences</a>${user.tier === 'free' ? ' | <a href="https://cityping.net/premium">Upgrade to Premium</a>' : ''}</p>
   </footer>
 </body>
 </html>
@@ -847,7 +931,13 @@ function generateEmailText(
 
 ${content.preheader}
 
-${content.sections.map(section => `
+${content.sections.map(section => {
+    // Handle premium sections with custom text
+    if (section.type === 'premium' && section.premiumText) {
+      return `\n${section.premiumText}\n`
+    }
+    // Standard sections
+    return `
 ${section.title}
 ${'-'.repeat(section.title.length)}
 
@@ -856,10 +946,10 @@ ${item.title}
 ${item.description || ''}
 ${item.url || ''}
 `).join('\n')}
-`).join('\n')}
+`}).join('\n')}
 
 ---
-CityPing | https://cityping.net/preferences
+CityPing | https://cityping.net/preferences${user.tier === 'free' ? ' | Upgrade: https://cityping.net/premium' : ''}
 `.trim()
 }
 

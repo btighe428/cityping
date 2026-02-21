@@ -23,6 +23,8 @@ import type {
   AgendaEvent,
 } from "./agents/daily-digest-orchestrator";
 import type { ClusterForEmail } from "./agents/clustering-agent";
+import { buildPremiumSections, type PremiumSectionsResult } from "./premium/email-sections";
+import { EnhancedSections } from "./premium/enhanced-sections";
 
 // =============================================================================
 // HTML UTILITIES
@@ -59,16 +61,16 @@ function formatDateTime(dt: DateTime): string {
 // =============================================================================
 
 const COLORS = {
-  primary: "#1e3a5f", // Dark blue for headers
-  secondary: "#4b5563", // Gray for body text
-  accent: "#2563eb", // Blue accent
-  urgencyHigh: "#dc2626", // Red
-  urgencyMedium: "#ea580c", // Orange
-  urgencyLow: "#2563eb", // Blue
-  background: "#f8fafc", // Light gray background
-  white: "#ffffff",
-  border: "#e2e8f0",
-  muted: "#6b7280",
+  primary: "#2d2d2d", // Dark charcoal for headers (Kladtrender style)
+  secondary: "#5a5a5a", // Medium gray for body text
+  accent: "#8B7355", // Warm brown accent
+  urgencyHigh: "#8B4513", // Saddle brown (replacing red)
+  urgencyMedium: "#A0826D", // Tan (replacing orange)
+  urgencyLow: "#B8A491", // Light tan (replacing blue)
+  background: "#FAF7F2", // Cream background
+  white: "#FFFFFF",
+  border: "#E8DFD1", // Light beige border
+  muted: "#A59784", // Muted brown-gray
 };
 
 const FONTS = {
@@ -114,7 +116,7 @@ function buildHorizonSection(
             <div style="display: flex; align-items: center;">
               <span style="font-size: 20px; margin-right: 12px;">${escapeHtml(alert.event.icon)}</span>
               <div style="flex: 1;">
-                <div style="font-weight: 600; color: #111827; margin-bottom: 4px;">
+                <div style="font-weight: 600; color: ${COLORS.primary}; margin-bottom: 4px;">
                   ${escapeHtml(alert.event.shortTitle)}
                   <span style="
                     background: ${urgencyColor};
@@ -148,8 +150,8 @@ function buildHorizonSection(
     !isPremium && premiumAlerts.length > 0
       ? `
         <tr>
-          <td style="padding: 12px; background: #fef3c7; border-radius: 6px; margin-top: 12px;">
-            <div style="font-size: 13px; color: #92400e;">
+          <td style="padding: 12px; background: #F5F1E8; border-radius: 6px; margin-top: 12px;">
+            <div style="font-size: 13px; color: ${COLORS.accent};">
               <strong>+${premiumAlerts.length} more alerts</strong> available for premium subscribers
               (tax deadlines, Broadway deals, and more)
             </div>
@@ -217,14 +219,14 @@ function buildDeepDiveSection(clusters: ClusterForEmail[]): string {
         <div style="
           margin-bottom: 20px;
           padding: 16px;
-          background: ${index === 0 ? "#f0f9ff" : COLORS.white};
-          border: 1px solid ${index === 0 ? "#bae6fd" : COLORS.border};
+          background: ${index === 0 ? "#F5F1E8" : COLORS.white};
+          border: 1px solid ${index === 0 ? "#D4C4B0" : COLORS.border};
           border-radius: 8px;
         ">
           <div style="font-size: 11px; color: ${COLORS.accent}; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">
             ${escapeHtml(cluster.theme)}
           </div>
-          <h3 style="margin: 0 0 8px 0; font-size: 16px; color: #111827; line-height: 1.3;">
+          <h3 style="margin: 0 0 8px 0; font-size: 16px; color: ${COLORS.primary}; line-height: 1.3;">
             ${escapeHtml(cluster.headline)}
           </h3>
           <p style="margin: 0 0 8px 0; font-size: 14px; color: ${COLORS.secondary}; line-height: 1.5;">
@@ -277,7 +279,7 @@ function buildBriefingSection(items: BriefingItem[]): string {
             <div style="display: flex; align-items: flex-start;">
               <span style="font-size: 16px; margin-right: 8px;">${item.icon || "📌"}</span>
               <div>
-                <div style="font-weight: 500; color: #111827; font-size: 14px;">
+                <div style="font-weight: 500; color: ${COLORS.primary}; font-size: 14px;">
                   ${escapeHtml(item.title)}
                 </div>
                 ${
@@ -352,7 +354,7 @@ function buildAgendaSection(
         .map(
           (event) => `
           <div style="padding: 8px 0; border-bottom: 1px solid ${COLORS.border};">
-            <div style="font-weight: 500; color: #111827; font-size: 14px;">
+            <div style="font-weight: 500; color: ${COLORS.primary}; font-size: 14px;">
               ${escapeHtml(event.title)}
             </div>
             <div style="font-size: 12px; color: ${COLORS.muted}; margin-top: 2px;">
@@ -392,7 +394,7 @@ function buildAgendaSection(
         letter-spacing: 1px;
         margin: 0 0 16px 0;
         padding-bottom: 8px;
-        border-bottom: 3px solid #16a34a;
+        border-bottom: 3px solid ${COLORS.accent};
       ">
         THE AGENDA
       </h2>
@@ -414,6 +416,14 @@ export interface EnhancedDigestOptions {
   userName?: string;
   isPremium?: boolean;
   referralCode?: string | null;
+  premiumSections?: PremiumSectionsResult | null;
+  enhancedSections?: {
+    trafficTrends?: string;
+    citiBikeDashboard?: string;
+    aspCalendar?: string;
+    weatherTimeline?: string;
+    commuteDashboard?: string;
+  } | null;
 }
 
 /**
@@ -451,19 +461,19 @@ export function buildEnhancedDigestHtml(
       <div style="
         margin: 24px 0;
         padding: 20px;
-        background: #ecfdf5;
+        background: #F5F1E8;
         border-radius: 8px;
         text-align: center;
       ">
-        <div style="font-weight: 600; color: #065f46; margin-bottom: 8px;">
+        <div style="font-weight: 600; color: ${COLORS.accent}; margin-bottom: 8px;">
           Know someone who'd love NYC alerts?
         </div>
-        <div style="font-size: 13px; color: #047857; margin-bottom: 12px;">
+        <div style="font-size: 13px; color: ${COLORS.secondary}; margin-bottom: 12px;">
           Share your link and get 1 month free when they subscribe
         </div>
         <a href="${appBaseUrl}/r/${escapeHtml(options.referralCode)}" style="
           display: inline-block;
-          background: #059669;
+          background: ${COLORS.accent};
           color: white;
           padding: 10px 20px;
           border-radius: 6px;
@@ -482,14 +492,14 @@ export function buildEnhancedDigestHtml(
       <div style="
         margin: 24px 0;
         padding: 20px;
-        background: #f3f4f6;
+        background: ${COLORS.background};
         border-radius: 8px;
         text-align: center;
       ">
-        <div style="font-weight: 600; color: #374151; margin-bottom: 8px;">
+        <div style="font-weight: 600; color: ${COLORS.primary}; margin-bottom: 8px;">
           Get more from CityPing
         </div>
-        <div style="font-size: 13px; color: #6b7280; margin-bottom: 12px;">
+        <div style="font-size: 13px; color: ${COLORS.muted}; margin-bottom: 12px;">
           Premium alerts, tax reminders, deal notifications, and more
         </div>
         <a href="${appBaseUrl}/pricing" style="
@@ -552,19 +562,55 @@ export function buildEnhancedDigestHtml(
             <div style="
               margin-top: 12px;
               padding: 10px 16px;
-              background: #f0f9ff;
+              background: #F5F1E8;
               border-radius: 8px;
               display: inline-block;
             ">
               <span style="font-size: 24px;">${digest.weather.emoji}</span>
-              <span style="font-size: 18px; font-weight: 600; color: #0369a1; margin-left: 8px;">
+              <span style="font-size: 18px; font-weight: 600; color: ${COLORS.accent}; margin-left: 8px;">
                 ${digest.weather.high}°/${digest.weather.low}°
               </span>
-              <span style="font-size: 14px; color: #64748b; margin-left: 8px;">
+              <span style="font-size: 14px; color: ${COLORS.secondary}; margin-left: 8px;">
                 ${escapeHtml(digest.weather.condition)}
               </span>
             </div>
+            ${digest.weather.forecast && digest.weather.forecast.length > 1 ? `
+              <div style="
+                margin-top: 12px;
+                padding: 12px 16px;
+                background: linear-gradient(135deg, #8B7355 0%, #A0826D 100%);
+                border-radius: 8px;
+              ">
+                <div style="font-size: 11px; color: rgba(255,255,255,0.8); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">
+                  7-Day Forecast
+                </div>
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    ${digest.weather.forecast.slice(0, 7).map((day, i) => `
+                      <td style="text-align: center; padding: 4px; ${i === 0 ? 'background: rgba(255,255,255,0.15); border-radius: 6px;' : ''}">
+                        <div style="font-size: 11px; color: rgba(255,255,255,0.9); font-weight: ${i === 0 ? '600' : '400'};">${day.day}</div>
+                        <div style="font-size: 18px; margin: 4px 0;">${day.emoji}</div>
+                        <div style="font-size: 13px; color: white; font-weight: 600;">${day.high}°</div>
+                        ${day.low !== null ? `<div style="font-size: 11px; color: rgba(255,255,255,0.7);">${day.low}°</div>` : ''}
+                        ${day.precipChance && day.precipChance > 20 ? `<div style="font-size: 10px; color: rgba(255,255,255,0.8);">💧${day.precipChance}%</div>` : ''}
+                      </td>
+                    `).join('')}
+                  </tr>
+                </table>
+              </div>
+            ` : ''}
           ` : ""}</div>
+
+        <!-- Premium Sections -->
+        ${options.premiumSections?.sections.map(s => s.html).join('') || ''}
+        ${options.premiumSections?.teaser?.html || ''}
+
+        <!-- Enhanced Data Visualizations (Premium) -->
+        ${options.enhancedSections?.commuteDashboard || ''}
+        ${options.enhancedSections?.weatherTimeline || ''}
+        ${options.enhancedSections?.trafficTrends || ''}
+        ${options.enhancedSections?.citiBikeDashboard || ''}
+        ${options.enhancedSections?.aspCalendar || ''}
 
         <!-- Main Content -->
         ${horizonSection}
@@ -573,7 +619,7 @@ export function buildEnhancedDigestHtml(
         ${agendaSection}
 
         <!-- Upgrade CTA -->
-        ${upgradeCta}
+        ${!options.premiumSections?.teaser ? upgradeCta : ''}
 
         <!-- Referral Section -->
         ${referralSection}
@@ -610,7 +656,8 @@ export function buildEnhancedDigestHtml(
  * Build a plain text version of the digest for email clients that don't support HTML.
  */
 export function buildEnhancedDigestText(
-  digest: DailyDigestContent
+  digest: DailyDigestContent,
+  premiumSections?: PremiumSectionsResult | null
 ): string {
   const lines: string[] = [];
   const dateStr = digest.meta.generatedAt.toFormat("EEEE, MMMM d, yyyy");
@@ -622,6 +669,26 @@ export function buildEnhancedDigestText(
   // Weather
   if (digest.weather) {
     lines.push(`${digest.weather.emoji} ${digest.weather.high}°/${digest.weather.low}° ${digest.weather.condition}`);
+    if (digest.weather.forecast && digest.weather.forecast.length > 1) {
+      lines.push("");
+      lines.push("7-DAY FORECAST:");
+      lines.push(digest.weather.forecast.slice(0, 7).map(d =>
+        `${d.day}: ${d.emoji} ${d.high}°${d.low !== null ? `/${d.low}°` : ''}${d.precipChance && d.precipChance > 20 ? ` 💧${d.precipChance}%` : ''}`
+      ).join(" | "));
+    }
+    lines.push("");
+  }
+
+  // Premium sections
+  if (premiumSections?.sections && premiumSections.sections.length > 0) {
+    lines.push("PREMIUM FEATURES");
+    lines.push("-".repeat(30));
+    for (const section of premiumSections.sections) {
+      lines.push(section.text);
+      lines.push("");
+    }
+  } else if (premiumSections?.teaser) {
+    lines.push(premiumSections.teaser.text);
     lines.push("");
   }
 

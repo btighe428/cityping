@@ -467,7 +467,7 @@ const TIER_3_SOURCES: NewsSource[] = [
     description: "NYC events, restaurants, things to do. Weekend planning.",
     relevanceMultiplier: 0.7,
     strongTopics: ["events", "restaurants", "bars", "things-to-do"],
-    enabled: true,
+    enabled: false,  // DISABLED: publishes lifestyle fluff that dilutes digest quality
   },
 ];
 

@@ -23,6 +23,7 @@ import {
   applyMessageTemplate,
   EventCategory,
 } from "../../config/nyc-knowledge";
+import { prisma } from "../db";
 
 // =============================================================================
 // TYPES
@@ -54,6 +55,148 @@ export interface HorizonOptions {
 }
 
 // =============================================================================
+// DATABASE ALERTS
+// =============================================================================
+
+interface HaikuAnalysis {
+  alertDays: number[];
+  alertMessage: string;
+  importanceScore: number;
+  insiderTip: string | null;
+  transitImpact: string;
+}
+
+/**
+ * Get alerts from CityEvent database that should show today.
+ */
+async function getDatabaseAlerts(
+  today: DateTime,
+  maxAlerts: number
+): Promise<Array<{ event: KnownEvent; eventDate: DateTime; daysUntil: number }>> {
+  const results: Array<{ event: KnownEvent; eventDate: DateTime; daysUntil: number }> = [];
+  const todayStart = today.startOf("day");
+
+  try {
+    // Get upcoming events from database
+    const dbEvents = await prisma.cityEvent.findMany({
+      where: {
+        startsAt: {
+          gte: todayStart.toJSDate(),
+          lte: todayStart.plus({ days: 45 }).toJSDate(),
+        },
+        status: "published",
+      },
+      orderBy: { startsAt: "asc" },
+      take: 100,
+    });
+
+    for (const event of dbEvents) {
+      if (!event.startsAt) continue;
+
+      const eventDate = DateTime.fromJSDate(event.startsAt);
+      const daysUntil = Math.floor(eventDate.diff(todayStart, "days").days);
+
+      // Parse Haiku analysis from editorNotes if available
+      let analysis: HaikuAnalysis | null = null;
+      try {
+        if (event.editorNotes) {
+          const notes = typeof event.editorNotes === 'string'
+            ? JSON.parse(event.editorNotes)
+            : event.editorNotes;
+          analysis = notes.haikuAnalysis;
+        }
+      } catch {
+        // Ignore parsing errors
+      }
+
+      // Determine alert days - use Haiku analysis or smart defaults
+      const alertDays = analysis?.alertDays || getDefaultAlertDays(event.category, event.title);
+
+      // Check if today is an alert day
+      if (alertDays.includes(daysUntil)) {
+        // Convert to KnownEvent format
+        const knownEvent: KnownEvent = {
+          id: event.id,
+          title: event.title,
+          shortTitle: event.title.slice(0, 30),
+          description: event.description || "",
+          category: mapDbCategoryToKnown(event.category),
+          icon: getCategoryIcon(event.category),
+          recurrence: { type: "manual", dates: [eventDate.toISODate()!] },
+          alertDaysBefore: alertDays,
+          messageTemplate: analysis?.alertMessage || `${event.title} is {date}!`,
+          source: event.sourceName || "CityPing",
+          lastVerified: new Date().toISOString().slice(0, 10),
+        };
+
+        results.push({ event: knownEvent, eventDate, daysUntil });
+      }
+    }
+  } catch (error) {
+    console.warn("[HorizonAgent] Database alerts error:", error);
+  }
+
+  return results.slice(0, maxAlerts);
+}
+
+/**
+ * Get default alert days based on category and title.
+ */
+function getDefaultAlertDays(category: string, title: string): number[] {
+  const titleLower = title.toLowerCase();
+
+  // Major events get more notice
+  if (titleLower.includes("parade") || titleLower.includes("marathon")) {
+    return [21, 14, 7, 3, 1];
+  }
+  if (titleLower.includes("festival") || titleLower.includes("week")) {
+    return [14, 7, 3, 1];
+  }
+  if (category === "civic" || titleLower.includes("deadline") || titleLower.includes("tax")) {
+    return [14, 7, 3, 1, 0];
+  }
+  if (category === "sports") {
+    return [7, 3, 1];
+  }
+
+  // Default for most events
+  return [7, 3, 1];
+}
+
+/**
+ * Map database category to KnownEvent category.
+ */
+function mapDbCategoryToKnown(category: string): EventCategory {
+  const mapping: Record<string, EventCategory> = {
+    culture: "culture",
+    sports: "culture",
+    food: "culture",
+    civic: "civic",
+    seasonal: "culture",
+    local: "culture",
+    transit: "transit",
+    weather: "culture",
+  };
+  return mapping[category] || "culture";
+}
+
+/**
+ * Get icon for category.
+ */
+function getCategoryIcon(category: string): string {
+  const icons: Record<string, string> = {
+    culture: "🎭",
+    sports: "⚽",
+    food: "🍽️",
+    civic: "🏛️",
+    seasonal: "🌸",
+    local: "📍",
+    transit: "🚇",
+  };
+  return icons[category] || "📅";
+}
+
+// =============================================================================
 // MAIN FUNCTION
 // =============================================================================
 
@@ -67,18 +210,33 @@ export async function generateHorizonAlerts(
   options?: HorizonOptions
 ): Promise<HorizonResult> {
   const today = options?.today || DateTime.now();
-  const maxAlerts = options?.maxAlerts || 5;
+  const maxAlerts = options?.maxAlerts || 10; // Increased for more events
   const useLLM = options?.useLLM !== false; // Default to true
   const errors: string[] = [];
 
-  // Get events that should alert today
-  const todayAlerts = getAlertsForToday(today, {
+  // Get events from knowledge base
+  const knowledgeAlerts = getAlertsForToday(today, {
     categories: options?.categories,
     includePremium: options?.includePremium,
   });
 
+  // Get events from database (CityEvent table)
+  const dbAlerts = await getDatabaseAlerts(today, maxAlerts);
+
+  // Merge both sources, deduplicate by title similarity
+  const allAlerts = [...knowledgeAlerts];
+  const knowledgeTitles = new Set(knowledgeAlerts.map(a => a.event.title.toLowerCase()));
+
+  for (const dbAlert of dbAlerts) {
+    // Skip if similar title exists in knowledge base
+    const titleLower = dbAlert.event.title.toLowerCase();
+    if (!knowledgeTitles.has(titleLower)) {
+      allAlerts.push(dbAlert);
+    }
+  }
+
   // Sort by urgency (closer events first), limit
-  const prioritized = todayAlerts
+  const prioritized = allAlerts
     .sort((a, b) => a.daysUntil - b.daysUntil)
     .slice(0, maxAlerts);
 

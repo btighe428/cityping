@@ -137,6 +137,33 @@
     {
       "path": "/api/jobs/scrape-streets",
       "schedule": "0 */4 * * *"
+    },
+
+    {
+      "_comment": "=== PREMIUM DATA SCRAPERS ===",
+      "_doc": "CitiBike GBFS: Every 5 minutes for real-time dock availability",
+      "path": "/api/jobs/scrape-citibike",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "_comment": "FAA Airports: Every 15 minutes for delay tracking",
+      "path": "/api/jobs/scrape-airports",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "_comment": "Environmental (Pollen/UV): 3x daily at 6am, 12pm, 6pm ET",
+      "path": "/api/jobs/scrape-environmental",
+      "schedule": "0 11,17,23 * * *"
+    },
+    {
+      "_comment": "Traffic scores: Every 10 min during rush hours (6-10am, 4-8pm ET)",
+      "path": "/api/jobs/scrape-traffic",
+      "schedule": "*/10 11-15,21-1 * * *"
+    },
+    {
+      "_comment": "One Thing curator: Daily at 5am ET (10:00 UTC)",
+      "path": "/api/jobs/curate-one-thing",
+      "schedule": "0 10 * * *"
     }
   ]
 }

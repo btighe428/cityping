@@ -1048,7 +1048,7 @@ export const NYC_KNOWLEDGE_BASE: KnownEvent[] = [
     category: "culture",
     icon: "☘️",
     recurrence: { type: "fixed-date", month: 3, day: 17 },
-    alertDaysBefore: [7, 3, 1],
+    alertDaysBefore: [30, 24, 21, 14, 7, 3, 1],
     messageTemplate:
       "St. Patrick's Day Parade is {date}! 5th Ave from 44th to 79th St, 11am start.",
     source: "nycstpatricksparade.org",
@@ -1124,7 +1124,7 @@ export const NYC_KNOWLEDGE_BASE: KnownEvent[] = [
     category: "holiday",
     icon: "⏰",
     recurrence: { type: "manual", dates: ["2026-03-08"] },
-    alertDaysBefore: [3, 1],
+    alertDaysBefore: [15, 7, 3, 1],
     messageTemplate:
       "Daylight Saving Time begins {date}. Set clocks FORWARD 1 hour at 2am.",
     source: "timeanddate.com",

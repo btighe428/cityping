@@ -8,82 +8,62 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// ============================================================================
-// ACCOUNTS & AUTHENTICATION
-// ============================================================================
-
 model Account {
-  id               String   @id @default(uuid()) @db.Uuid
-  stripeCustomerId String   @unique @map("stripe_customer_id")
+  id               String         @id @default(uuid()) @db.Uuid
+  stripeCustomerId String         @unique @map("stripe_customer_id")
   email            String?
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
-
-  phones        Phone[]
-  subscriptions Subscription[]
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  phones           Phone[]
+  subscriptions    Subscription[]
 
   @@map("accounts")
 }
 
 model Phone {
-  id             String         @id @default(uuid()) @db.Uuid
-  accountId      String         @map("account_id") @db.Uuid
-  e164           String         @unique
-  smsOptInStatus SmsOptInStatus @default(pending) @map("sms_opt_in_status")
-  smsOptInAt     DateTime?      @map("sms_opt_in_at") @db.Timestamptz
-  smsOptInSource String?        @map("sms_opt_in_source")
-  smsOptInIp     String?        @map("sms_opt_in_ip") @db.Inet
-  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz
-
-  account      Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  cityAlerts   PhoneCityAlert[]
-  messages     MessageOutbox[]
-  manageTokens ManageToken[]
+  id             String           @id @default(uuid()) @db.Uuid
+  accountId      String           @map("account_id") @db.Uuid
+  e164           String           @unique
+  smsOptInStatus SmsOptInStatus   @default(pending) @map("sms_opt_in_status")
+  smsOptInAt     DateTime?        @map("sms_opt_in_at") @db.Timestamptz(6)
+  smsOptInSource String?          @map("sms_opt_in_source")
+  smsOptInIp     String?          @map("sms_opt_in_ip") @db.Inet
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  manageTokens   ManageToken[]
+  messages       MessageOutbox[]
+  cityAlerts     PhoneCityAlert[]
+  account        Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@map("phones")
-}
-
-enum SmsOptInStatus {
-  pending
-  confirmed
-  revoked
-
-  @@map("sms_opt_in_status")
 }
 
 model Subscription {
   id                   String    @id @default(uuid()) @db.Uuid
   accountId            String    @map("account_id") @db.Uuid
   stripeSubscriptionId String    @unique @map("stripe_subscription_id")
-  status               String // active, trialing, past_due, canceled, unpaid, etc.
-  currentPeriodEnd     DateTime? @map("current_period_end") @db.Timestamptz
+  status               String
+  currentPeriodEnd     DateTime? @map("current_period_end") @db.Timestamptz(6)
   cancelAtPeriodEnd    Boolean   @default(false) @map("cancel_at_period_end")
   priceId              String    @map("price_id")
-  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-
-  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  account              Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@map("subscriptions")
 }
 
-// ============================================================================
-// CITIES & ALERTS
-// ============================================================================
-
 model City {
-  id                   String   @id @default(uuid()) @db.Uuid
-  slug                 String   @unique
+  id                   String            @id @default(uuid()) @db.Uuid
+  slug                 String            @unique
   name                 String
-  timezone             String // e.g., "America/New_York"
-  defaultSendTimeLocal String   @default("18:00") @map("default_send_time_local")
-  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  phoneAlerts      PhoneCityAlert[]
-  calendarSources  CalendarSource[]
-  suspensionEvents SuspensionEvent[]
-  messages         MessageOutbox[]
+  timezone             String
+  defaultSendTimeLocal String            @default("18:00") @map("default_send_time_local")
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  calendarSources      CalendarSource[]
+  messages             MessageOutbox[]
+  phoneAlerts          PhoneCityAlert[]
+  suspensionEvents     SuspensionEvent[]
 
   @@map("cities")
 }
@@ -92,83 +72,734 @@ model PhoneCityAlert {
   phoneId                String   @map("phone_id") @db.Uuid
   cityId                 String   @map("city_id") @db.Uuid
   enabled                Boolean  @default(true)
-  notifySms              Boolean  @default(true) @map("notify_sms")
-  notifyEmail            Boolean  @default(true) @map("notify_email")
   preferredSendTimeLocal String?  @map("preferred_send_time_local")
-  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  phone Phone @relation(fields: [phoneId], references: [id], onDelete: Cascade)
-  city  City  @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  notifyEmail            Boolean  @default(true) @map("notify_email")
+  notifySms              Boolean  @default(true) @map("notify_sms")
+  city                   City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  phone                  Phone    @relation(fields: [phoneId], references: [id], onDelete: Cascade)
 
   @@id([phoneId, cityId])
   @@map("phone_city_alerts")
 }
 
-// ============================================================================
-// CALENDAR & EVENTS
-// ============================================================================
-
 model CalendarSource {
-  id            String    @id @default(uuid()) @db.Uuid
-  cityId        String    @map("city_id") @db.Uuid
-  sourceType    String    @default("ics") @map("source_type") // "ics"
-  discoverUrl   String?   @map("discover_url")
-  sourceUrl     String    @map("source_url")
+  id            String            @id @default(uuid()) @db.Uuid
+  cityId        String            @map("city_id") @db.Uuid
+  sourceType    String            @default("ics") @map("source_type")
+  discoverUrl   String?           @map("discover_url")
+  sourceUrl     String            @map("source_url")
   year          Int?
   etag          String?
-  lastModified  String?   @map("last_modified")
-  lastFetchedAt DateTime? @map("last_fetched_at") @db.Timestamptz
-  lastParsedAt  DateTime? @map("last_parsed_at") @db.Timestamptz
-  rawHash       String?   @map("raw_hash")
-  isActive      Boolean   @default(true) @map("is_active")
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
-
-  city   City              @relation(fields: [cityId], references: [id], onDelete: Cascade)
-  events SuspensionEvent[]
+  lastModified  String?           @map("last_modified")
+  lastFetchedAt DateTime?         @map("last_fetched_at") @db.Timestamptz(6)
+  lastParsedAt  DateTime?         @map("last_parsed_at") @db.Timestamptz(6)
+  rawHash       String?           @map("raw_hash")
+  isActive      Boolean           @default(true) @map("is_active")
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  city          City              @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  events        SuspensionEvent[]
 
   @@map("calendar_sources")
 }
 
 model SuspensionEvent {
-  id         String   @id @default(uuid()) @db.Uuid
-  cityId     String   @map("city_id") @db.Uuid
-  sourceId   String   @map("source_id") @db.Uuid
-  eventUid   String?  @map("event_uid")
-  summary    String? // Holiday name/reason
-  date       DateTime @db.Date // One row per suspension day
-  rawStart   String?  @map("raw_start")
-  rawEnd     String?  @map("raw_end")
-  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz
-
-  city   City           @relation(fields: [cityId], references: [id], onDelete: Cascade)
-  source CalendarSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  id         String         @id @default(uuid()) @db.Uuid
+  cityId     String         @map("city_id") @db.Uuid
+  sourceId   String         @map("source_id") @db.Uuid
+  eventUid   String?        @map("event_uid")
+  summary    String?
+  date       DateTime       @db.Date
+  rawStart   String?        @map("raw_start")
+  rawEnd     String?        @map("raw_end")
+  lastSeenAt DateTime       @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  city       City           @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  source     CalendarSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
   @@unique([cityId, date, summary])
   @@map("suspension_events")
 }
-
-// ============================================================================
-// MESSAGING
-// ============================================================================
 
 model MessageOutbox {
   id               String        @id @default(uuid()) @db.Uuid
   phoneId          String        @map("phone_id") @db.Uuid
   cityId           String?       @map("city_id") @db.Uuid
   type             MessageType
-  targetDate       DateTime?     @map("target_date") @db.Date // For reminders
+  targetDate       DateTime?     @map("target_date") @db.Date
   body             String
   twilioMessageSid String?       @map("twilio_message_sid")
   status           MessageStatus @default(queued)
   errorCode        String?       @map("error_code")
-  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz
-
-  phone Phone @relation(fields: [phoneId], references: [id], onDelete: Cascade)
-  city  City? @relation(fields: [cityId], references: [id], onDelete: SetNull)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  city             City?         @relation(fields: [cityId], references: [id])
+  phone            Phone         @relation(fields: [phoneId], references: [id], onDelete: Cascade)
 
   @@unique([phoneId, cityId, type, targetDate])
   @@map("message_outbox")
+}
+
+model WebhookEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  provider    String
+  eventId     String    @map("event_id")
+  payload     Json
+  receivedAt  DateTime  @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt DateTime? @map("processed_at") @db.Timestamptz(6)
+
+  @@unique([provider, eventId])
+  @@map("webhook_events")
+}
+
+model ManageToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  phoneId   String    @map("phone_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  phone     Phone     @relation(fields: [phoneId], references: [id], onDelete: Cascade)
+
+  @@map("manage_tokens")
+}
+
+/// Unified user model for NYCPing multi-module architecture.
+/// Consolidates identity, subscription tier, and inferred location profile.
+/// Coexists with legacy Phone/Account models during migration period.
+model User {
+  id                   String                 @id @default(cuid())
+  phone                String?                @unique
+  email                String                 @unique
+  zipCode              String                 @map("zip_code")
+  tier                 UserTier               @default(free)
+  stripeCustomerId     String?                @unique @map("stripe_customer_id")
+  inferredNeighborhood String?                @map("inferred_neighborhood")
+  inferredSubwayLines  String[]               @map("inferred_subway_lines")
+  inferredHasParking   Boolean                @default(false) @map("inferred_has_parking")
+  smsOptInStatus       SmsOptInStatus         @default(pending) @map("sms_opt_in_status")
+  smsOptInAt           DateTime?              @map("sms_opt_in_at") @db.Timestamptz(6)
+  emailOptInAt         DateTime               @default(now()) @map("email_opt_in_at") @db.Timestamptz(6)
+  createdAt            DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  preferredBorough     String?                @map("preferred_borough")
+  vibePreset           VibePreset             @default(REGULAR) @map("vibe_preset")
+  notifications        NotificationOutbox[]
+  referralsReceived    Referral[]             @relation("ReferralsReceived")
+  referralsSent        Referral[]             @relation("ReferralsSent")
+  feedback             UserEventFeedback[]
+  preferences          UserModulePreference[]
+  savedLocations       UserSavedLocation[]
+
+  @@map("users")
+}
+
+/// Represents a top-level feature module in NYCPing (parking, transit, events, etc.)
+/// Each module groups related alert sources and user preferences.
+model Module {
+  id               String                   @id
+  name             String
+  description      String
+  icon             String
+  sortOrder        Int                      @map("sort_order")
+  sources          AlertSource[]
+  preferences      UserModulePreference[]
+  inferenceWeights ZipCodeInferenceWeight[]
+
+  @@map("modules")
+}
+
+/// Junction table linking users to modules with per-module preferences.
+/// Supports both explicit opt-in/out and inferred preferences based on user profile.
+/// Settings JSON allows module-specific configuration (e.g., transit line filters).
+model UserModulePreference {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  moduleId   String   @map("module_id")
+  enabled    Boolean  @default(true)
+  settings   Json     @default("{}")
+  isInferred Boolean  @default(true) @map("is_inferred")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  module     Module   @relation(fields: [moduleId], references: [id])
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, moduleId])
+  @@map("user_module_preferences")
+}
+
+/// An individual data source within a module that generates alerts.
+/// Examples: ASP calendar, MTA subway status, 311 street closures.
+model AlertSource {
+  id           String          @id @default(cuid())
+  moduleId     String          @map("module_id")
+  slug         String          @unique
+  name         String
+  frequency    SourceFrequency
+  enabled      Boolean         @default(true)
+  config       Json            @default("{}")
+  lastPolledAt DateTime?       @map("last_polled_at") @db.Timestamptz(6)
+  lastEventAt  DateTime?       @map("last_event_at") @db.Timestamptz(6)
+  events       AlertEvent[]
+  module       Module          @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@map("alert_sources")
+}
+
+/// Individual alert events ingested from various sources.
+/// Each event represents a single notification-worthy occurrence (e.g., ASP suspension, subway delay).
+model AlertEvent {
+  id             String                 @id @default(cuid())
+  sourceId       String                 @map("source_id")
+  externalId     String?                @map("external_id")
+  title          String
+  body           String?
+  startsAt       DateTime?              @map("starts_at") @db.Timestamptz(6)
+  endsAt         DateTime?              @map("ends_at") @db.Timestamptz(6)
+  neighborhoods  String[]
+  metadata       Json                   @default("{}")
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt      DateTime?              @map("expires_at") @db.Timestamptz(6)
+  hypeScore      Int?                   @map("hype_score")
+  hypeFactors    Json?                  @map("hype_factors")
+  isWeatherSafe  Boolean?               @map("is_weather_safe")
+  venueType      VenueType?             @map("venue_type")
+  weatherScore   Float?                 @map("weather_score")
+  embedding      Unsupported("vector")?
+  embeddingModel String?                @map("embedding_model")
+  embeddingAt    DateTime?              @map("embedding_at") @db.Timestamptz(6)
+  topicClusterId String?                @map("topic_cluster_id")
+  source         AlertSource            @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  notifications  NotificationOutbox[]
+  feedback       UserEventFeedback[]
+
+  @@unique([sourceId, externalId])
+  @@index([sourceId, createdAt])
+  @@index([startsAt])
+  @@index([embedding], map: "alert_embedding_idx")
+  @@index([topicClusterId], map: "alert_topic_cluster_idx")
+  @@map("alert_events")
+}
+
+/// Referral tracking model for viral growth program.
+/// Links a referrer (existing user) to a referee (new user) with status tracking.
+/// Supports both pre-signup referrals (by email) and post-signup conversions.
+/// Integrates with Stripe for coupon-based reward fulfillment.
+model Referral {
+  id             String         @id @default(cuid())
+  referrerId     String         @map("referrer_id")
+  refereeId      String?        @map("referee_id")
+  refereeEmail   String         @map("referee_email")
+  referralCode   String         @unique @map("referral_code")
+  status         ReferralStatus @default(PENDING)
+  stripeCouponId String?        @map("stripe_coupon_id")
+  convertedAt    DateTime?      @map("converted_at") @db.Timestamptz(6)
+  expiresAt      DateTime       @map("expires_at") @db.Timestamptz(6)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  referee        User?          @relation("ReferralsReceived", fields: [refereeId], references: [id])
+  referrer       User           @relation("ReferralsSent", fields: [referrerId], references: [id], onDelete: Cascade)
+
+  @@index([referralCode])
+  @@index([refereeEmail])
+  @@index([referrerId])
+  @@map("referrals")
+}
+
+/// User feedback on alert events for relevance scoring.
+/// Enables feedback loop: users rate events, system learns preferences by zip code.
+/// Token-based verification for email link clicks (no login required).
+model UserEventFeedback {
+  id             String       @id @default(uuid()) @db.Uuid
+  userId         String       @map("user_id")
+  eventId        String       @map("event_id")
+  feedbackType   FeedbackType @map("feedback_type")
+  feedbackToken  String       @unique @map("feedback_token")
+  tokenExpiresAt DateTime     @map("token_expires_at") @db.Timestamptz(6)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  event          AlertEvent   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId])
+  @@index([feedbackToken])
+  @@map("user_event_feedback")
+}
+
+/// Aggregated inference weights per zip code and module.
+/// Stores positive/negative feedback counts and computed adjustment factor.
+/// Used to boost/suppress event relevance for specific neighborhoods.
+model ZipCodeInferenceWeight {
+  id               String   @id @default(uuid()) @db.Uuid
+  zipCode          String   @map("zip_code")
+  moduleId         String   @map("module_id")
+  positiveCount    Int      @default(0) @map("positive_count")
+  negativeCount    Int      @default(0) @map("negative_count")
+  adjustmentFactor Float    @default(1.0) @map("adjustment_factor")
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  module           Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([zipCode, moduleId])
+  @@index([zipCode])
+  @@map("zip_code_inference_weights")
+}
+
+/// Transactional outbox for reliable notification delivery.
+/// Implements exactly-once semantics via unique constraint on (user, event, channel).
+/// Scheduler polls for pending notifications where scheduledFor <= now().
+/// Supports tier-based timing: premium gets instant, free gets 24h delay.
+model NotificationOutbox {
+  id           String              @id @default(cuid())
+  userId       String              @map("user_id")
+  eventId      String              @map("event_id")
+  channel      NotificationChannel
+  scheduledFor DateTime            @map("scheduled_for") @db.Timestamptz(6)
+  sentAt       DateTime?           @map("sent_at") @db.Timestamptz(6)
+  status       NotificationStatus  @default(pending)
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  event        AlertEvent          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId, channel])
+  @@index([status, scheduledFor])
+  @@map("notification_outbox")
+}
+
+/// City events from all NYC sources - the canonical calendar
+/// Powers the daily/weekly digest emails with insider intelligence
+model CityEvent {
+  id             String          @id @default(cuid())
+  title          String
+  description    String?
+  rawDescription String?         @map("raw_description")
+  startsAt       DateTime?       @map("starts_at") @db.Timestamptz(6)
+  endsAt         DateTime?       @map("ends_at") @db.Timestamptz(6)
+  deadlineAt     DateTime?       @map("deadline_at") @db.Timestamptz(6)
+  announcedAt    DateTime?       @map("announced_at") @db.Timestamptz(6)
+  venue          String?
+  neighborhood   String?
+  borough        String?
+  latitude       Float?
+  longitude      Float?
+  category       EventCategory
+  subcategory    String?
+  tags           String[]        @default([])
+  insiderScore   Int             @default(0) @map("insider_score")
+  scarcityScore  Int             @default(0) @map("scarcity_score")
+  timingScore    Int             @default(0) @map("timing_score")
+  cachetScore    Int             @default(0) @map("cachet_score")
+  status         CurationStatus  @default(review)
+  aiConfidence   Float           @default(0) @map("ai_confidence")
+  editorNotes    String?         @map("editor_notes")
+  sourceType     String?         @map("source_type")
+  sourceName     String?         @map("source_name")
+  externalId     String?         @map("external_id")
+  sourceUrl      String?         @map("source_url")
+  isRecurring    Boolean         @default(false) @map("is_recurring")
+  recurrenceRule String?         @map("recurrence_rule")
+  evergreenId    String?         @map("evergreen_id")
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  evergreen      EvergreenEvent? @relation(fields: [evergreenId], references: [id])
+
+  @@unique([sourceName, externalId])
+  @@index([startsAt])
+  @@index([category])
+  @@index([status])
+  @@index([insiderScore])
+  @@map("city_events")
+}
+
+/// News article scraped from NYC news sources.
+/// Stores raw articles and AI-generated summaries for day-ahead email.
+model NewsArticle {
+  id             String                 @id @default(cuid())
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  source         String
+  externalId     String                 @map("external_id")
+  url            String
+  title          String
+  snippet        String?
+  publishedAt    DateTime               @map("published_at") @db.Timestamptz(6)
+  category       String?
+  author         String?
+  imageUrl       String?                @map("image_url")
+  summary        String?
+  nycAngle       String?                @map("nyc_angle")
+  isSelected     Boolean                @default(false) @map("is_selected")
+  curatedFor     DateTime?              @map("curated_for") @db.Date
+  curatedAt      DateTime?              @map("curated_at") @db.Timestamptz(6)
+  embedding      Unsupported("vector")?
+  embeddingModel String?                @map("embedding_model")
+  embeddingAt    DateTime?              @map("embedding_at") @db.Timestamptz(6)
+  topicClusterId String?                @map("topic_cluster_id")
+
+  @@unique([source, externalId])
+  @@index([publishedAt])
+  @@index([isSelected, curatedFor])
+  @@index([embedding], map: "news_embedding_idx")
+  @@index([topicClusterId], map: "news_topic_cluster_idx")
+  @@map("news_articles")
+}
+
+/// Pre-seeded annual NYC events that recur each year
+/// AI monitors for official date announcements and creates CityEvent instances
+model EvergreenEvent {
+  id               String        @id @default(cuid())
+  name             String
+  typicalDate      String        @map("typical_date")
+  typicalTime      String?       @map("typical_time")
+  category         EventCategory
+  insiderContext   String?       @map("insider_context")
+  tips             String[]      @default([])
+  anticipationDays Int[]         @default([30, 7, 1]) @map("anticipation_days")
+  sources          String[]      @default([])
+  lastCheckedAt    DateTime?     @map("last_checked_at") @db.Timestamptz(6)
+  isActive         Boolean       @default(true) @map("is_active")
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  instances        CityEvent[]
+
+  @@map("evergreen_events")
+}
+
+/// Free museum day configuration - static, config-driven (not scraped)
+/// Stores recurring free admission schedules for NYC museums
+model MuseumFreeDay {
+  id          String   @id @default(cuid())
+  museum      String
+  dayOfWeek   Int      @map("day_of_week")
+  weekOfMonth Int?     @map("week_of_month")
+  startTime   String?  @map("start_time")
+  endTime     String?  @map("end_time")
+  notes       String?
+  address     String?
+  url         String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([museum, dayOfWeek, weekOfMonth])
+  @@map("museum_free_days")
+}
+
+/// NYC 311 service alerts - water outages, street closures, etc.
+/// Scraped from NYC Open Data 311 API
+model ServiceAlert {
+  id            String    @id @default(cuid())
+  externalId    String    @unique @map("external_id")
+  complaintType String    @map("complaint_type")
+  descriptor    String?
+  address       String?
+  borough       String?
+  zipCode       String?   @map("zip_code")
+  latitude      Float?
+  longitude     Float?
+  status        String
+  severity      String    @default("medium")
+  createdDate   DateTime  @map("created_date") @db.Timestamptz(6)
+  resolvedDate  DateTime? @map("resolved_date") @db.Timestamptz(6)
+  fetchedAt     DateTime  @default(now()) @map("fetched_at") @db.Timestamptz(6)
+
+  @@index([complaintType, status])
+  @@index([borough])
+  @@index([createdDate])
+  @@map("service_alerts")
+}
+
+/// Air quality readings from AirNow API
+/// Includes current AQI and forecast
+model AirQualityReading {
+  id           String   @id @default(cuid())
+  zipCode      String   @map("zip_code")
+  aqi          Int
+  category     String
+  pollutant    String?
+  color        String?
+  forecastDate DateTime @map("forecast_date") @db.Date
+  isAlert      Boolean  @default(false) @map("is_alert")
+  fetchedAt    DateTime @default(now()) @map("fetched_at") @db.Timestamptz(6)
+
+  @@unique([zipCode, forecastDate])
+  @@index([forecastDate])
+  @@index([isAlert])
+  @@map("air_quality_readings")
+}
+
+/// Dining deals - Restaurant Week, new openings, specials
+/// Scraped from multiple RSS sources
+model DiningDeal {
+  id           String    @id @default(cuid())
+  externalId   String    @unique @map("external_id")
+  source       String
+  restaurant   String
+  neighborhood String?
+  borough      String?
+  cuisine      String?
+  dealType     String    @map("deal_type")
+  title        String
+  description  String?
+  price        String?
+  startDate    DateTime? @map("start_date") @db.Date
+  endDate      DateTime? @map("end_date") @db.Date
+  url          String
+  imageUrl     String?   @map("image_url")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  fetchedAt    DateTime  @default(now()) @map("fetched_at") @db.Timestamptz(6)
+
+  @@index([source])
+  @@index([dealType])
+  @@index([startDate, endDate])
+  @@map("dining_deals")
+}
+
+/// Tracks execution history of all cron jobs for health monitoring.
+/// Enables detection of stale jobs (jobs that haven't run in expected interval)
+/// and failure alerting. Critical for "running forever" assurance.
+model JobRun {
+  id             String    @id @default(cuid())
+  jobName        String    @map("job_name")
+  status         JobStatus @default(running)
+  startedAt      DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
+  durationMs     Int?      @map("duration_ms")
+  itemsProcessed Int?      @map("items_processed")
+  itemsFailed    Int?      @map("items_failed")
+  errorMessage   String?   @map("error_message")
+  metadata       Json      @default("{}")
+
+  @@index([jobName, startedAt])
+  @@index([status])
+  @@map("job_runs")
+}
+
+/// Configuration for job health monitoring.
+/// Defines expected run frequency and alerting thresholds.
+model JobConfig {
+  jobName           String    @id @map("job_name")
+  displayName       String    @map("display_name")
+  expectedFrequency String    @map("expected_frequency")
+  alertAfterMissed  Int       @default(2) @map("alert_after_missed")
+  isEnabled         Boolean   @default(true) @map("is_enabled")
+  lastAlertedAt     DateTime? @map("last_alerted_at") @db.Timestamptz(6)
+
+  @@map("job_configs")
+}
+
+/// NYC Parks events - free outdoor events, fitness classes, tours
+/// Scraped from NYC Parks calendar
+model ParkEvent {
+  id          String   @id @default(cuid())
+  externalId  String   @unique @map("external_id")
+  name        String
+  description String?
+  parkName    String   @map("park_name")
+  borough     String?
+  address     String?
+  latitude    Float?
+  longitude   Float?
+  date        DateTime @db.Date
+  startTime   String?  @map("start_time")
+  endTime     String?  @map("end_time")
+  category    String?
+  isFree      Boolean  @default(true) @map("is_free")
+  url         String?
+  imageUrl    String?  @map("image_url")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  fetchedAt   DateTime @default(now()) @map("fetched_at") @db.Timestamptz(6)
+
+  @@index([date])
+  @@index([borough])
+  @@index([category])
+  @@map("park_events")
+}
+
+/// Transactional outbox for reliable email delivery.
+/// Implements exactly-once semantics via unique constraint on (recipient, emailType, targetDate).
+/// Prevents duplicate emails when cron jobs overlap or retry.
+model EmailOutbox {
+  id           String      @id @default(cuid())
+  recipient    String
+  emailType    EmailType   @map("email_type")
+  targetDate   DateTime    @map("target_date") @db.Date
+  subject      String
+  resendId     String?     @map("resend_id")
+  status       EmailStatus @default(pending)
+  errorMessage String?     @map("error_message")
+  metadata     Json        @default("{}")
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sentAt       DateTime?   @map("sent_at") @db.Timestamptz(6)
+
+  @@unique([recipient, emailType, targetDate], name: "recipient_emailType_targetDate", map: "recipient_emailType_targetDate")
+  @@index([emailType, targetDate], map: "email_outbox_emailType_targetDate_idx")
+  @@index([status, targetDate], map: "email_outbox_status_targetDate_idx")
+  @@map("email_outbox")
+}
+
+/// CitiBike station real-time availability data.
+/// Synced from GBFS feed every 5 minutes for premium dock alerts.
+model CitiBikeStation {
+  id             String   @id @default(cuid())
+  stationId      String   @unique @map("station_id")
+  name           String
+  lat            Float
+  lon            Float
+  neighborhood   String?
+  capacity       Int
+  bikesAvailable Int      @map("bikes_available")
+  docksAvailable Int      @map("docks_available")
+  lastReportedAt DateTime @map("last_reported_at") @db.Timestamptz(6)
+  fetchedAt      DateTime @default(now()) @map("fetched_at") @db.Timestamptz(6)
+
+  @@index([neighborhood])
+  @@map("citibike_stations")
+}
+
+/// Airport delay status from FAA API.
+/// Tracks delays and travel waivers for JFK, LGA, EWR.
+model AirportStatus {
+  id              String   @id @default(cuid())
+  airportCode     String   @map("airport_code")
+  delayType       String?  @map("delay_type")
+  delayReason     String?  @map("delay_reason")
+  avgDelayMinutes Int?     @map("avg_delay_minutes")
+  travelWaivers   Json     @default("[]") @map("travel_waivers")
+  status          String   @default("normal")
+  fetchedAt       DateTime @default(now()) @map("fetched_at") @db.Timestamptz(6)
+
+  @@unique([airportCode, fetchedAt])
+  @@index([airportCode])
+  @@index([fetchedAt])
+  @@map("airport_status")
+}
+
+/// Environmental readings (pollen, UV index) by zip code.
+/// Synced from Tomorrow.io/NWS for premium health alerts.
+model EnvironmentalReading {
+  id             String   @id @default(cuid())
+  zipCode        String   @map("zip_code")
+  readingType    String   @map("reading_type")
+  value          Float
+  category       String
+  recommendation String?
+  forecastDate   DateTime @map("forecast_date") @db.Date
+  fetchedAt      DateTime @default(now()) @map("fetched_at") @db.Timestamptz(6)
+
+  @@unique([zipCode, readingType, forecastDate])
+  @@index([forecastDate])
+  @@map("environmental_readings")
+}
+
+/// Traffic friction scores by region.
+/// Powers the "best time to leave" premium feature.
+model TrafficScore {
+  id            String   @id @default(cuid())
+  region        String
+  frictionScore Int      @map("friction_score")
+  label         String
+  fetchedAt     DateTime @default(now()) @map("fetched_at") @db.Timestamptz(6)
+
+  @@unique([region, fetchedAt])
+  @@index([region])
+  @@map("traffic_scores")
+}
+
+/// Daily curated "One Thing" event selection.
+/// AI-selected obscure/interesting event with insider reasoning.
+model CuratedDailyEvent {
+  id            String   @id @default(cuid())
+  eventId       String   @map("event_id")
+  curatedFor    DateTime @unique @map("curated_for") @db.Date
+  insiderReason String   @map("insider_reason")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("curated_daily_events")
+}
+
+/// Ferry service alerts from NYC Ferry and NY Waterway.
+/// Real-time status for East River, Hudson River, and harbor routes.
+model FerryAlert {
+  id            String    @id @default(cuid())
+  externalId    String    @unique @map("external_id")
+  service       String    // "nyc_ferry" | "ny_waterway"
+  alertType     String    @map("alert_type") // "service_alert" | "delay"
+  routeId       String?   @map("route_id")
+  routeName     String?   @map("route_name")
+  title         String
+  description   String?
+  severity      String    @default("info")
+  affectedStops String[]  @map("affected_stops")
+  startsAt      DateTime? @map("starts_at") @db.Timestamptz(6)
+  endsAt        DateTime? @map("ends_at") @db.Timestamptz(6)
+  isActive      Boolean   @default(true) @map("is_active")
+  fetchedAt     DateTime  @default(now()) @map("fetched_at") @db.Timestamptz(6)
+
+  @@index([service])
+  @@index([isActive, fetchedAt])
+  @@map("ferry_alerts")
+}
+
+/// User-saved locations for premium features.
+/// E.g., home/work CitiBike stations for personalized dock alerts.
+model UserSavedLocation {
+  id           String  @id @default(cuid())
+  userId       String  @map("user_id")
+  locationType String  @map("location_type")
+  stationId    String? @map("station_id")
+  address      String?
+  lat          Float?
+  lon          Float?
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, locationType])
+  @@map("user_saved_locations")
+}
+
+/// User email delivery preferences for time-slot system.
+/// Controls which email slots user receives (morning, noon, evening).
+model UserDeliveryPreference {
+  id             String   @id @default(cuid())
+  userId         String   @unique @map("user_id")
+  morningEnabled Boolean  @default(true) @map("morning_enabled")
+  noonEnabled    Boolean  @default(false) @map("noon_enabled")
+  eveningEnabled Boolean  @default(false) @map("evening_enabled")
+  timezone       String   @default("America/New_York")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("user_delivery_preferences")
+}
+
+/// Static congestion pricing rates from MTA.
+/// Rates vary by time of day and day of week.
+model CongestionPricingRate {
+  id          String @id @default(cuid())
+  periodType  String @unique @map("period_type")
+  rate        Float
+  description String
+
+  @@map("congestion_pricing_rates")
+}
+
+/// Distributed lock for cron jobs to prevent duplicate execution.
+/// When a job starts, it acquires a lock. If another instance tries to run,
+/// it will fail to acquire the lock and exit immediately.
+model JobLock {
+  jobName    String   @id @map("job_name")
+  lockId     String   @map("lock_id")
+  acquiredAt DateTime @default(now()) @map("acquired_at") @db.Timestamptz(6)
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@index([expiresAt], map: "job_locks_expiresAt_idx")
+  @@map("job_locks")
+}
+
+enum SmsOptInStatus {
+  pending
+  confirmed
+  revoked
+
+  @@map("sms_opt_in_status")
 }
 
 enum MessageType {
@@ -189,39 +820,6 @@ enum MessageStatus {
 
   @@map("message_status")
 }
-
-// ============================================================================
-// WEBHOOKS & TOKENS
-// ============================================================================
-
-model WebhookEvent {
-  id          String    @id @default(uuid()) @db.Uuid
-  provider    String // "stripe" or "twilio"
-  eventId     String    @map("event_id")
-  payload     Json
-  receivedAt  DateTime  @default(now()) @map("received_at") @db.Timestamptz
-  processedAt DateTime? @map("processed_at") @db.Timestamptz
-
-  @@unique([provider, eventId])
-  @@map("webhook_events")
-}
-
-model ManageToken {
-  id        String    @id @default(uuid()) @db.Uuid
-  phoneId   String    @map("phone_id") @db.Uuid
-  tokenHash String    @unique @map("token_hash")
-  expiresAt DateTime  @map("expires_at") @db.Timestamptz
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  usedAt    DateTime? @map("used_at") @db.Timestamptz
-
-  phone Phone @relation(fields: [phoneId], references: [id], onDelete: Cascade)
-
-  @@map("manage_tokens")
-}
-
-// ============================================================================
-// USERS (Unified Model - coexists with legacy Phone/Account during migration)
-// ============================================================================
 
 /// User tier classification determining notification channels and timing.
 /// Free: Email digest with 24-hour delay
@@ -245,175 +843,12 @@ enum VibePreset {
   @@map("vibe_preset")
 }
 
-/// Unified user model for NYCPing multi-module architecture.
-/// Consolidates identity, subscription tier, and inferred location profile.
-/// Coexists with legacy Phone/Account models during migration period.
-model User {
-  id               String   @id @default(cuid())
-  phone            String?  @unique // E.164 format, optional for free tier
-  email            String   @unique
-  zipCode          String   @map("zip_code")
-  tier             UserTier @default(free)
-  stripeCustomerId String?  @unique @map("stripe_customer_id")
-
-  // Inferred profile (populated by zip-to-geo service)
-  inferredNeighborhood String?  @map("inferred_neighborhood")
-  inferredSubwayLines  String[] @map("inferred_subway_lines")
-  inferredHasParking   Boolean  @default(false) @map("inferred_has_parking")
-
-  // User preference (selected at signup)
-  preferredBorough String?    @map("preferred_borough") // manhattan, brooklyn, queens, bronx, staten_island
-  vibePreset       VibePreset @default(REGULAR) @map("vibe_preset")
-
-  // Opt-in tracking
-  smsOptInStatus SmsOptInStatus @default(pending) @map("sms_opt_in_status")
-  smsOptInAt     DateTime?      @map("sms_opt_in_at") @db.Timestamptz
-  emailOptInAt   DateTime       @default(now()) @map("email_opt_in_at") @db.Timestamptz
-
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
-
-  // Relations
-  preferences       UserModulePreference[]
-  notifications     NotificationOutbox[]
-  feedback          UserEventFeedback[]
-  referralsSent     Referral[]             @relation("ReferralsSent")
-  referralsReceived Referral[]             @relation("ReferralsReceived")
-  deliveryPrefs     UserDeliveryPreference?
-
-  @@map("users")
-}
-
-// ============================================================================
-// NYCPING MULTI-MODULE ARCHITECTURE
-// ============================================================================
-
-/// Represents a top-level feature module in NYCPing (parking, transit, events, etc.)
-/// Each module groups related alert sources and user preferences.
-model Module {
-  id          String @id // "parking", "transit", "events", "housing", "food", "deals"
-  name        String // "Parking & Driving"
-  description String
-  icon        String // Emoji identifier
-  sortOrder   Int    @map("sort_order")
-
-  sources          AlertSource[]
-  preferences      UserModulePreference[]
-  inferenceWeights ZipCodeInferenceWeight[]
-
-  @@map("modules")
-}
-
-/// Junction table linking users to modules with per-module preferences.
-/// Supports both explicit opt-in/out and inferred preferences based on user profile.
-/// Settings JSON allows module-specific configuration (e.g., transit line filters).
-model UserModulePreference {
-  id         String   @id @default(cuid())
-  userId     String   @map("user_id")
-  moduleId   String   @map("module_id")
-  enabled    Boolean  @default(true)
-  settings   Json     @default("{}")
-  isInferred Boolean  @default(true) @map("is_inferred")
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
-
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  module Module @relation(fields: [moduleId], references: [id])
-
-  @@unique([userId, moduleId])
-  @@map("user_module_preferences")
-}
-
-/// User preferences for time-slot email delivery (9am/noon/7pm).
-/// Enables per-user customization of email timing.
-/// Free tier defaults to morning only; Premium can opt into all slots.
-model UserDeliveryPreference {
-  id                String   @id @default(cuid())
-  userId            String   @unique @map("user_id")
-
-  // Time slot preferences
-  morningEnabled    Boolean  @default(true) @map("morning_enabled")
-  noonEnabled       Boolean  @default(false) @map("noon_enabled")
-  eveningEnabled    Boolean  @default(false) @map("evening_enabled")
-
-  // Quiet hours (optional custom quiet period)
-  quietHoursStart   Int?     @map("quiet_hours_start") // 0-23
-  quietHoursEnd     Int?     @map("quiet_hours_end")   // 0-23
-  timezone          String   @default("America/New_York")
-
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("user_delivery_preferences")
-}
-
-/// An individual data source within a module that generates alerts.
-/// Examples: ASP calendar, MTA subway status, 311 street closures.
-model AlertSource {
-  id           String          @id @default(cuid())
-  moduleId     String          @map("module_id")
-  slug         String          @unique // "asp-calendar", "mta-subway"
-  name         String // "Alternate Side Parking"
-  frequency    SourceFrequency
-  enabled      Boolean         @default(true)
-  config       Json            @default("{}")
-  lastPolledAt DateTime?       @map("last_polled_at") @db.Timestamptz
-  lastEventAt  DateTime?       @map("last_event_at") @db.Timestamptz
-
-  module Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  events AlertEvent[]
-
-  @@map("alert_sources")
-}
-
-/// Individual alert events ingested from various sources.
-/// Each event represents a single notification-worthy occurrence (e.g., ASP suspension, subway delay).
-model AlertEvent {
-  id            String    @id @default(cuid())
-  sourceId      String    @map("source_id")
-  externalId    String?   @map("external_id") // Dedup key from source
-  title         String
-  body          String?
-  startsAt      DateTime? @map("starts_at") @db.Timestamptz
-  endsAt        DateTime? @map("ends_at") @db.Timestamptz
-  neighborhoods String[] // For geo-matching
-  metadata      Json      @default("{}")
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  expiresAt     DateTime? @map("expires_at") @db.Timestamptz
-
-  // Hype scoring for sample sales and high-demand events
-  hypeScore   Int?  @map("hype_score") // 0-100 composite score
-  hypeFactors Json? @map("hype_factors") // { brandTier: 80, scarcity: +15, aiAdj: +5 }
-
-  // Weather integration for venue-aware scoring
-  venueType     VenueType? @map("venue_type") // INDOOR, OUTDOOR, COVERED, WEATHER_DEPENDENT
-  weatherScore  Float?     @map("weather_score") // Adjusted relevance score based on weather
-  isWeatherSafe Boolean?   @map("is_weather_safe") // Whether event is safe given current/forecast weather
-
-  // Semantic embeddings for vector similarity search
-  embedding        Unsupported("vector(1536)")?
-  embeddingModel   String?    @map("embedding_model")
-  embeddingAt      DateTime?  @map("embedding_at") @db.Timestamptz
-  topicClusterId   String?    @map("topic_cluster_id")
-
-  source        AlertSource          @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  notifications NotificationOutbox[]
-  feedback      UserEventFeedback[]
-
-  @@unique([sourceId, externalId])
-  @@index([sourceId, createdAt])
-  @@index([startsAt])
-  @@map("alert_events")
-}
-
 /// Polling frequency classification for alert sources.
 /// Determines how often the system checks for new data.
 enum SourceFrequency {
-  realtime // Poll every 60-90 sec (e.g., subway delays)
-  hourly // Cron hourly (e.g., weather updates)
-  daily // Cron daily (e.g., ASP calendar sync)
+  realtime
+  hourly
+  daily
 
   @@map("source_frequency")
 }
@@ -421,59 +856,25 @@ enum SourceFrequency {
 /// Venue type classification for weather-aware event scoring.
 /// Determines how weather conditions affect event relevance.
 enum VenueType {
-  INDOOR // Fully enclosed venues (museums, theaters, malls)
-  OUTDOOR // Parks, rooftops, street events
-  COVERED // Partially covered (tents, awnings, pavilions)
-  WEATHER_DEPENDENT // Events that may be cancelled due to weather
+  INDOOR
+  OUTDOOR
+  COVERED
+  WEATHER_DEPENDENT
 
   @@map("venue_type")
 }
-
-// ============================================================================
-// REFERRAL PROGRAM
-// ============================================================================
 
 /// Referral status tracking for viral growth incentives.
 /// PENDING: Referred user signed up but not yet converted to paid subscription
 /// CONVERTED: Referred user completed paid subscription (reward earned)
 /// EXPIRED: Referral expired without conversion (typically 30-90 day window)
 enum ReferralStatus {
-  PENDING // Referred user signed up but not converted
-  CONVERTED // Referred user completed paid subscription
-  EXPIRED // Referral expired without conversion
+  PENDING
+  CONVERTED
+  EXPIRED
 
   @@map("referral_status")
 }
-
-/// Referral tracking model for viral growth program.
-/// Links a referrer (existing user) to a referee (new user) with status tracking.
-/// Supports both pre-signup referrals (by email) and post-signup conversions.
-/// Integrates with Stripe for coupon-based reward fulfillment.
-model Referral {
-  id             String         @id @default(cuid())
-  referrerId     String         @map("referrer_id")
-  refereeId      String?        @map("referee_id")
-  refereeEmail   String         @map("referee_email")
-  referralCode   String         @unique @map("referral_code")
-  status         ReferralStatus @default(PENDING)
-  stripeCouponId String?        @map("stripe_coupon_id")
-  convertedAt    DateTime?      @map("converted_at") @db.Timestamptz
-  expiresAt      DateTime       @map("expires_at") @db.Timestamptz
-  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz
-
-  referrer User  @relation("ReferralsSent", fields: [referrerId], references: [id], onDelete: Cascade)
-  referee  User? @relation("ReferralsReceived", fields: [refereeId], references: [id], onDelete: SetNull)
-
-  @@index([referralCode])
-  @@index([refereeEmail])
-  @@index([referrerId])
-  @@map("referrals")
-}
-
-// ============================================================================
-// FEEDBACK LOOP - User Event Feedback
-// ============================================================================
 
 /// Feedback type for user event ratings.
 /// Simple binary classification for aggregation and scoring adjustments.
@@ -483,49 +884,6 @@ enum FeedbackType {
 
   @@map("feedback_type")
 }
-
-/// User feedback on alert events for relevance scoring.
-/// Enables feedback loop: users rate events, system learns preferences by zip code.
-/// Token-based verification for email link clicks (no login required).
-model UserEventFeedback {
-  id             String       @id @default(uuid()) @db.Uuid
-  userId         String       @map("user_id")
-  eventId        String       @map("event_id")
-  feedbackType   FeedbackType @map("feedback_type")
-  feedbackToken  String       @unique @map("feedback_token")
-  tokenExpiresAt DateTime     @map("token_expires_at") @db.Timestamptz
-  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz
-
-  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  event AlertEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, eventId])
-  @@index([feedbackToken])
-  @@map("user_event_feedback")
-}
-
-/// Aggregated inference weights per zip code and module.
-/// Stores positive/negative feedback counts and computed adjustment factor.
-/// Used to boost/suppress event relevance for specific neighborhoods.
-model ZipCodeInferenceWeight {
-  id               String   @id @default(uuid()) @db.Uuid
-  zipCode          String   @map("zip_code")
-  moduleId         String   @map("module_id")
-  positiveCount    Int      @default(0) @map("positive_count")
-  negativeCount    Int      @default(0) @map("negative_count")
-  adjustmentFactor Float    @default(1.0) @map("adjustment_factor")
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
-
-  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-
-  @@unique([zipCode, moduleId])
-  @@index([zipCode])
-  @@map("zip_code_inference_weights")
-}
-
-// ============================================================================
-// NOTIFICATION OUTBOX (Transactional Outbox Pattern)
-// ============================================================================
 
 /// Delivery channel for notifications.
 /// SMS available for premium tier; email for all users.
@@ -550,292 +908,29 @@ enum NotificationStatus {
   @@map("notification_status")
 }
 
-/// Transactional outbox for reliable notification delivery.
-/// Implements exactly-once semantics via unique constraint on (user, event, channel).
-/// Scheduler polls for pending notifications where scheduledFor <= now().
-/// Supports tier-based timing: premium gets instant, free gets 24h delay.
-model NotificationOutbox {
-  id           String              @id @default(cuid())
-  userId       String              @map("user_id")
-  eventId      String              @map("event_id")
-  channel      NotificationChannel
-  scheduledFor DateTime            @map("scheduled_for") @db.Timestamptz
-  sentAt       DateTime?           @map("sent_at") @db.Timestamptz
-  status       NotificationStatus  @default(pending)
-  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime            @updatedAt @map("updated_at") @db.Timestamptz
-
-  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  event AlertEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, eventId, channel])
-  @@index([status, scheduledFor])
-  @@map("notification_outbox")
-}
-
-// ============================================================================
-// CITY PULSE - NYC Events Intelligence
-// ============================================================================
-
 /// Category classification for city events
 enum EventCategory {
-  culture // Museums, galleries, theater, music
-  sports // Games, playoffs, marathons
-  food // Restaurant openings, deals, food events
-  civic // Housing lotteries, signups, voting
-  weather // Forecasts, snow days, heat waves
-  transit // Service changes, new routes
-  seasonal // Holidays, tree lightings, parades
-  local // Neighborhood-specific, community
+  culture
+  sports
+  food
+  civic
+  weather
+  transit
+  seasonal
+  local
 
   @@map("event_category")
 }
 
 /// Curation status for city events
 enum CurationStatus {
-  auto // Auto-published (factual content)
-  review // Awaiting human review
-  published // Approved and visible
-  rejected // Not suitable for publication
+  auto
+  review
+  published
+  rejected
 
   @@map("curation_status")
 }
-
-/// City events from all NYC sources - the canonical calendar
-/// Powers the daily/weekly digest emails with insider intelligence
-model CityEvent {
-  id String @id @default(cuid())
-
-  // What
-  title          String
-  description    String? // AI-generated insider copy
-  rawDescription String? @map("raw_description") // Original source text
-
-  // When
-  startsAt    DateTime? @map("starts_at") @db.Timestamptz
-  endsAt      DateTime? @map("ends_at") @db.Timestamptz
-  deadlineAt  DateTime? @map("deadline_at") @db.Timestamptz // Signup deadline
-  announcedAt DateTime? @map("announced_at") @db.Timestamptz
-
-  // Where
-  venue        String?
-  neighborhood String?
-  borough      String?
-  latitude     Float?
-  longitude    Float?
-
-  // Classification
-  category    EventCategory
-  subcategory String?
-  tags        String[]      @default([])
-
-  // Intelligence scores (0-100)
-  insiderScore  Int @default(0) @map("insider_score")
-  scarcityScore Int @default(0) @map("scarcity_score")
-  timingScore   Int @default(0) @map("timing_score")
-  cachetScore   Int @default(0) @map("cachet_score")
-
-  // Curation
-  status       CurationStatus @default(review)
-  aiConfidence Float          @default(0) @map("ai_confidence") // 0-1
-  editorNotes  String?        @map("editor_notes")
-
-  // Source tracking
-  sourceType String? @map("source_type") // "api", "rss", "scrape", "manual"
-  sourceName String? @map("source_name") // "TimeOut", "NYC.gov", etc.
-  externalId String? @map("external_id")
-  sourceUrl  String? @map("source_url")
-
-  // Evergreen linkage
-  isRecurring    Boolean @default(false) @map("is_recurring")
-  recurrenceRule String? @map("recurrence_rule") // "first Sunday November"
-  evergreenId    String? @map("evergreen_id")
-
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
-
-  evergreen EvergreenEvent? @relation(fields: [evergreenId], references: [id])
-
-  @@unique([sourceName, externalId])
-  @@index([startsAt])
-  @@index([category])
-  @@index([status])
-  @@index([insiderScore])
-  @@map("city_events")
-}
-
-// ============================================================================
-// NEWS ARTICLES - Daily NYC News Curation
-// ============================================================================
-
-/// News article scraped from NYC news sources.
-/// Stores raw articles and AI-generated summaries for day-ahead email.
-model NewsArticle {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  // Source info
-  source     String // "gothamist" | "thecity" | "patch"
-  externalId String @map("external_id") // URL or GUID for dedup
-  url        String
-
-  // Raw content
-  title       String
-  snippet     String? // RSS description/excerpt
-  publishedAt DateTime @map("published_at") @db.Timestamptz
-  category    String?  // If available from RSS
-  author      String?
-  imageUrl    String?  @map("image_url")
-
-  // AI-generated content (populated after curation)
-  summary     String? // 1-2 sentence summary
-  nycAngle    String? @map("nyc_angle") // "Why it matters" commentary
-
-  // Curation tracking
-  isSelected  Boolean   @default(false) @map("is_selected") // Top 3 pick for the day
-  curatedFor  DateTime? @map("curated_for") @db.Date // Date this was selected for
-  curatedAt   DateTime? @map("curated_at") @db.Timestamptz
-
-  // Semantic embeddings for vector similarity search
-  embedding        Unsupported("vector(1536)")?
-  embeddingModel   String?    @map("embedding_model")
-  embeddingAt      DateTime?  @map("embedding_at") @db.Timestamptz
-  topicClusterId   String?    @map("topic_cluster_id")
-
-  @@unique([source, externalId])
-  @@index([publishedAt])
-  @@index([isSelected, curatedFor])
-  @@map("news_articles")
-}
-
-/// Pre-seeded annual NYC events that recur each year
-/// AI monitors for official date announcements and creates CityEvent instances
-model EvergreenEvent {
-  id String @id @default(cuid())
-
-  name        String // "Rockefeller Tree Lighting"
-  typicalDate String        @map("typical_date") // "last Wednesday of November"
-  typicalTime String?       @map("typical_time") // "7pm"
-  category    EventCategory
-
-  // Insider knowledge
-  insiderContext String?  @map("insider_context") @db.Text // Local wisdom
-  tips           String[] @default([]) // Array of pro tips
-
-  // Notification timing
-  anticipationDays Int[] @default([30, 7, 1]) @map("anticipation_days")
-
-  // Monitoring
-  sources       String[]  @default([]) // URLs to watch for announcements
-  lastCheckedAt DateTime? @map("last_checked_at") @db.Timestamptz
-
-  // Metadata
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
-
-  instances CityEvent[]
-
-  @@map("evergreen_events")
-}
-
-// ============================================================================
-// NEW SCRAPERS - Museums, 311, Air Quality, Dining, Parks
-// ============================================================================
-
-/// Free museum day configuration - static, config-driven (not scraped)
-/// Stores recurring free admission schedules for NYC museums
-model MuseumFreeDay {
-  id        String  @id @default(cuid())
-  museum    String  // "MoMA", "Met", "Brooklyn Museum"
-  dayOfWeek Int     @map("day_of_week") // 0=Sun, 1=Mon, etc.
-  weekOfMonth Int?  @map("week_of_month") // 1=first, 2=second, etc. Null = every week
-  startTime String? @map("start_time") // "17:30" (24hr format)
-  endTime   String? @map("end_time") // "21:00"
-  notes     String? // "Pay what you wish", "Free admission"
-  address   String?
-  url       String?
-  isActive  Boolean @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  @@unique([museum, dayOfWeek, weekOfMonth])
-  @@map("museum_free_days")
-}
-
-/// NYC 311 service alerts - water outages, street closures, etc.
-/// Scraped from NYC Open Data 311 API
-model ServiceAlert {
-  id            String    @id @default(cuid())
-  externalId    String    @unique @map("external_id") // 311 unique_key
-  complaintType String    @map("complaint_type") // "Water Outage", "Street Closure"
-  descriptor    String?   // Additional detail
-  address       String?
-  borough       String?
-  zipCode       String?   @map("zip_code")
-  latitude      Float?
-  longitude     Float?
-  status        String    // "Open", "Closed", "In Progress"
-  severity      String    @default("medium") // "low", "medium", "high", "critical"
-  createdDate   DateTime  @map("created_date") @db.Timestamptz
-  resolvedDate  DateTime? @map("resolved_date") @db.Timestamptz
-  fetchedAt     DateTime  @default(now()) @map("fetched_at") @db.Timestamptz
-
-  @@index([complaintType, status])
-  @@index([borough])
-  @@index([createdDate])
-  @@map("service_alerts")
-}
-
-/// Air quality readings from AirNow API
-/// Includes current AQI and forecast
-model AirQualityReading {
-  id           String   @id @default(cuid())
-  zipCode      String   @map("zip_code")
-  aqi          Int      // 0-500 scale
-  category     String   // "Good", "Moderate", "Unhealthy for Sensitive Groups", etc.
-  pollutant    String?  // "PM2.5", "Ozone"
-  color        String?  // Hex color code for category
-  forecastDate DateTime @map("forecast_date") @db.Date
-  isAlert      Boolean  @default(false) @map("is_alert") // True if AQI > 100
-  fetchedAt    DateTime @default(now()) @map("fetched_at") @db.Timestamptz
-
-  @@unique([zipCode, forecastDate])
-  @@index([forecastDate])
-  @@index([isAlert])
-  @@map("air_quality_readings")
-}
-
-/// Dining deals - Restaurant Week, new openings, specials
-/// Scraped from multiple RSS sources
-model DiningDeal {
-  id           String    @id @default(cuid())
-  externalId   String    @unique @map("external_id") // URL hash for dedup
-  source       String    // "restaurant-week", "eater", "infatuation"
-  restaurant   String
-  neighborhood String?
-  borough      String?
-  cuisine      String?
-  dealType     String    @map("deal_type") // "prix-fixe", "opening", "special", "deal"
-  title        String
-  description  String?
-  price        String?   // "$30 lunch", "$45 dinner"
-  startDate    DateTime? @map("start_date") @db.Date
-  endDate      DateTime? @map("end_date") @db.Date
-  url          String
-  imageUrl     String?   @map("image_url")
-  isActive     Boolean   @default(true) @map("is_active")
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  fetchedAt    DateTime  @default(now()) @map("fetched_at") @db.Timestamptz
-
-  @@index([source])
-  @@index([dealType])
-  @@index([startDate, endDate])
-  @@map("dining_deals")
-}
-
-// ============================================================================
-// JOB MONITORING - Health tracking for cron jobs
-// ============================================================================
 
 /// Job execution status for tracking cron job health
 enum JobStatus {
@@ -847,73 +942,6 @@ enum JobStatus {
   @@map("job_status")
 }
 
-/// Tracks execution history of all cron jobs for health monitoring.
-/// Enables detection of stale jobs (jobs that haven't run in expected interval)
-/// and failure alerting. Critical for "running forever" assurance.
-model JobRun {
-  id          String    @id @default(cuid())
-  jobName     String    @map("job_name") // "send-daily-pulse", "ingest-mta-alerts"
-  status      JobStatus @default(running)
-  startedAt   DateTime  @default(now()) @map("started_at") @db.Timestamptz
-  completedAt DateTime? @map("completed_at") @db.Timestamptz
-  durationMs  Int?      @map("duration_ms")
-
-  // Results
-  itemsProcessed Int?    @map("items_processed")
-  itemsFailed    Int?    @map("items_failed")
-  errorMessage   String? @map("error_message")
-  metadata       Json    @default("{}") // Flexible storage for job-specific data
-
-  @@index([jobName, startedAt])
-  @@index([status])
-  @@map("job_runs")
-}
-
-/// Configuration for job health monitoring.
-/// Defines expected run frequency and alerting thresholds.
-model JobConfig {
-  jobName           String @id @map("job_name")
-  displayName       String @map("display_name")
-  expectedFrequency String @map("expected_frequency") // "5m", "1h", "24h"
-  alertAfterMissed  Int    @default(2) @map("alert_after_missed") // Alert after N missed runs
-  isEnabled         Boolean @default(true) @map("is_enabled")
-  lastAlertedAt     DateTime? @map("last_alerted_at") @db.Timestamptz
-
-  @@map("job_configs")
-}
-
-/// NYC Parks events - free outdoor events, fitness classes, tours
-/// Scraped from NYC Parks calendar
-model ParkEvent {
-  id          String    @id @default(cuid())
-  externalId  String    @unique @map("external_id") // Event ID from parks calendar
-  name        String
-  description String?
-  parkName    String    @map("park_name")
-  borough     String?
-  address     String?
-  latitude    Float?
-  longitude   Float?
-  date        DateTime  @db.Date
-  startTime   String?   @map("start_time") // "10:00"
-  endTime     String?   @map("end_time") // "12:00"
-  category    String?   // "Fitness", "Nature", "Sports", "Arts", "Tours"
-  isFree      Boolean   @default(true) @map("is_free")
-  url         String?
-  imageUrl    String?   @map("image_url")
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  fetchedAt   DateTime  @default(now()) @map("fetched_at") @db.Timestamptz
-
-  @@index([date])
-  @@index([borough])
-  @@index([category])
-  @@map("park_events")
-}
-
-// ============================================================================
-// EMAIL OUTBOX - Idempotency and Tracking for Email Delivery
-// ============================================================================
-
 /// Email types for categorization and deduplication
 enum EmailType {
   daily_digest
@@ -924,8 +952,6 @@ enum EmailType {
   monthly_recap
   welcome
   system
-
-  // Time-slot email system (v2)
   morning_briefing
   midday_pulse
   evening_winddown
@@ -941,45 +967,4 @@ enum EmailStatus {
   skipped
 
   @@map("email_status")
-}
-
-/// Transactional outbox for reliable email delivery.
-/// Implements exactly-once semantics via unique constraint on (recipient, emailType, targetDate).
-/// Prevents duplicate emails when cron jobs overlap or retry.
-model EmailOutbox {
-  id         String     @id @default(cuid())
-  recipient  String     // Email address (normalized to lowercase)
-  emailType  EmailType  @map("email_type")
-  targetDate DateTime   @map("target_date") @db.Date // The date this email is for (not when it was sent)
-  subject    String     // Subject line for reference
-  resendId   String?    @map("resend_id") // Resend message ID for tracking
-  status     EmailStatus @default(pending)
-  errorMessage String?  @map("error_message")
-  metadata   Json       @default("{}") // Flexible storage for job-specific data
-  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt  DateTime   @updatedAt @map("updated_at") @db.Timestamptz
-  sentAt     DateTime?  @map("sent_at") @db.Timestamptz
-
-  // Unique constraint prevents duplicate emails for same recipient/type/date
-  @@unique([recipient, emailType, targetDate], name: "recipient_emailType_targetDate")
-  @@index([status, targetDate])
-  @@index([emailType, targetDate])
-  @@map("email_outbox")
-}
-
-// ============================================================================
-// JOB LOCK - Distributed Locking to Prevent Concurrent Job Runs
-// ============================================================================
-
-/// Distributed lock for cron jobs to prevent duplicate execution.
-/// When a job starts, it acquires a lock. If another instance tries to run,
-/// it will fail to acquire the lock and exit immediately.
-model JobLock {
-  jobName   String   @id @map("job_name") // Each job can only have one lock
-  lockId    String   @map("lock_id") // Unique identifier for this lock instance
-  acquiredAt DateTime @default(now()) @map("acquired_at") @db.Timestamptz
-  expiresAt DateTime @map("expires_at") @db.Timestamptz // Lock timeout (prevents stuck locks)
-
-  @@index([expiresAt])
-  @@map("job_locks")
 }

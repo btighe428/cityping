@@ -28,6 +28,8 @@ import {
   categorizeContent,
   generateDedupKey,
   meetsQualityThreshold,
+  isBlockedContent,
+  classifyTransitAlert,
   QUALITY_THRESHOLDS,
 } from "./scoring";
 
@@ -698,7 +700,14 @@ export async function selectBestContentV2(
       take: fetchLimit,
     }),
     prisma.alertEvent.findMany({
-      where: { createdAt: { gte: lookbackDate } },
+      where: {
+        createdAt: { gte: lookbackDate },
+        // Only include active alerts (not expired/resolved)
+        OR: [
+          { endsAt: null },
+          { endsAt: { gt: new Date() } },
+        ],
+      },
       include: { source: { select: { moduleId: true } } },
       orderBy: { createdAt: "desc" },
       take: fetchLimit,
@@ -746,7 +755,14 @@ export async function selectBestContentV2(
         dedupKey,
       };
     })
-    .filter((item) => meetsQualityThreshold(item.scores, cfg.minQualityScore))
+    .filter((item) => {
+      // Filter out blocked content (Dear Abby, national news, etc.)
+      if (isBlockedContent(item.title, item.summary || item.snippet)) {
+        console.log(`[DataQuality] Blocked: ${item.title}`);
+        return false;
+      }
+      return meetsQualityThreshold(item.scores, cfg.minQualityScore);
+    })
     .sort((a, b) => b.scores.overall - a.scores.overall);
 
   // Deduplicate news by dedupKey
@@ -760,14 +776,14 @@ export async function selectBestContentV2(
       const isHousing = alert.source?.moduleId === "housing";
       const isTransit = alert.source?.moduleId === "transit";
       const contentType = isHousing ? "housing" : isTransit ? "transit" : "alert";
-      
+
       const scores = scoreContent({
         title: alert.title,
         body: alert.body,
         publishedAt: alert.createdAt,
         contentType,
       });
-      
+
       // For transit alerts, use transit categorization
       const category = categorizeContent(alert.title, alert.body, contentType);
       const dedupKey = generateDedupKey("alert", alert.title);
@@ -781,11 +797,23 @@ export async function selectBestContentV2(
         dedupKey,
         // Store content type for filtering
         _contentType: contentType,
+        _isTransit: isTransit,
       };
     })
     .filter((item) => {
       // Use appropriate threshold based on content type
       const contentType = (item as unknown as { _contentType?: string })._contentType;
+      const isTransit = (item as unknown as { _isTransit?: boolean })._isTransit;
+
+      // For transit alerts, only include actionable ones (critical/major)
+      if (isTransit) {
+        const classification = classifyTransitAlert(item.title, item.body);
+        if (!classification.isActionable) {
+          console.log(`[DataQuality] Filtered low-signal transit alert: ${item.title.substring(0, 50)}...`);
+          return false;
+        }
+      }
+
       return meetsQualityThreshold(item.scores, cfg.minQualityScore, contentType as any);
     })
     .sort((a, b) => b.scores.overall - a.scores.overall);
@@ -1094,6 +1122,7 @@ export async function selectBestContentV2Semantic(
   );
 
   // Fetch alert events with embeddings (join with source to get moduleId for housing detection)
+  // Only include active alerts (not expired/resolved)
   const rawAlertsWithEmbeddings = await prisma.$queryRawUnsafe<
     Array<{
       id: string;
@@ -1108,6 +1137,7 @@ export async function selectBestContentV2Semantic(
      FROM "alert_events" ae
      LEFT JOIN "alert_sources" s ON ae.source_id = s.id
      WHERE ae.created_at >= $1
+       AND (ae.ends_at IS NULL OR ae.ends_at > NOW())
      ORDER BY ae.created_at DESC
      LIMIT $2`,
     lookbackDate,
@@ -1141,55 +1171,67 @@ export async function selectBestContentV2Semantic(
 
   console.log(`[DataQuality] News: ${newsWithEmbeddings.length} with embeddings, ${newsWithoutEmbeddings.length} without`);
 
-  // Score all news articles
-  const scoredNews: ScoredNewsArticle[] = rawNewsWithEmbeddings.map((article) => {
-    const scores = scoreContent({
-      title: article.title,
-      body: article.summary || article.snippet,
-      url: article.url,
-      source: article.source,
-      publishedAt: article.published_at,
-      contentType: "news",
+  // Score all news articles and filter blocked content
+  const scoredNews: ScoredNewsArticle[] = rawNewsWithEmbeddings
+    .filter((article) => {
+      // Filter out blocked content (Dear Abby, national news, etc.)
+      if (isBlockedContent(article.title, article.summary || article.snippet)) {
+        console.log(`[DataQuality] Blocked: ${article.title}`);
+        return false;
+      }
+      return true;
+    })
+    .map((article) => {
+      const scores = scoreContent({
+        title: article.title,
+        body: article.summary || article.snippet,
+        url: article.url,
+        source: article.source,
+        publishedAt: article.published_at,
+        contentType: "news",
+      });
+      const category = categorizeContent(article.title, article.summary || article.snippet);
+      const dedupKey = generateDedupKey("news", article.title);
+
+      return {
+        id: article.id,
+        title: article.title,
+        snippet: article.snippet,
+        summary: article.summary,
+        source: article.source,
+        url: article.url,
+        publishedAt: article.published_at,
+        createdAt: article.created_at,
+        // These fields may not be in raw query, set defaults
+        externalId: "",
+        author: null,
+        imageUrl: null,
+        nycAngle: null,
+        isSelected: false,
+        curatedFor: null,
+        curatedAt: null,
+        embeddingModel: null,
+        embeddingAt: null,
+        topicClusterId: null,
+        scores,
+        category,
+        dedupKey,
+      } as ScoredNewsArticle;
     });
-    const category = categorizeContent(article.title, article.summary || article.snippet);
-    const dedupKey = generateDedupKey("news", article.title);
 
-    return {
-      id: article.id,
-      title: article.title,
-      snippet: article.snippet,
-      summary: article.summary,
-      source: article.source,
-      url: article.url,
-      publishedAt: article.published_at,
-      createdAt: article.created_at,
-      // These fields may not be in raw query, set defaults
-      externalId: "",
-      author: null,
-      imageUrl: null,
-      nycAngle: null,
-      isSelected: false,
-      curatedFor: null,
-      curatedAt: null,
-      embeddingModel: null,
-      embeddingAt: null,
-      topicClusterId: null,
-      scores,
-      category,
-      dedupKey,
-    } as ScoredNewsArticle;
-  });
-
-  // Prepare clusterable items for news with embeddings
-  const clusterableNews = newsWithEmbeddings.map((article) => {
-    const scored = scoredNews.find(s => s.id === article.id)!;
-    return {
-      id: article.id,
-      embedding: parseEmbedding(article.embedding!),
-      score: scored.scores.overall,
-      title: article.title,
-    };
-  });
+  // Prepare clusterable items for news with embeddings (only scored/non-blocked articles)
+  const scoredNewsIds = new Set(scoredNews.map(n => n.id));
+  const clusterableNews = newsWithEmbeddings
+    .filter(article => scoredNewsIds.has(article.id))
+    .map((article) => {
+      const scored = scoredNews.find(s => s.id === article.id)!;
+      return {
+        id: article.id,
+        embedding: parseEmbedding(article.embedding!),
+        score: scored.scores.overall,
+        title: article.title,
+      };
+    });
 
   // Cluster news articles
   const newsClusters = clusterItems(clusterableNews, cfg.clusterSimilarityThreshold);
@@ -1212,57 +1254,75 @@ export async function selectBestContentV2Semantic(
   const selectedNews = [...selectedNewsFromClusters, ...newsWithoutEmbeddingsScored]
     .slice(0, cfg.maxNews || 5);
 
-  // Score and cluster alerts
+  // Score and cluster alerts - filter for actionable transit alerts
   const alertsWithEmbeddings = rawAlertsWithEmbeddings.filter(a => a.embedding);
 
-  const scoredAlerts: ScoredAlertEvent[] = rawAlertsWithEmbeddings.map((alert) => {
-    // Housing alerts get lower relevance
-    const isHousing = alert.module_id === "housing";
-    const scores = scoreContent({
-      title: alert.title,
-      body: alert.body,
-      publishedAt: alert.created_at,
-      contentType: isHousing ? "housing" : "alert",
+  const scoredAlerts: ScoredAlertEvent[] = rawAlertsWithEmbeddings
+    .filter((alert) => {
+      // For transit alerts, only include actionable ones (critical/major)
+      const isTransit = alert.module_id === "transit";
+      if (isTransit) {
+        const classification = classifyTransitAlert(alert.title, alert.body);
+        if (!classification.isActionable) {
+          console.log(`[DataQuality] Filtered low-signal transit alert: ${alert.title.substring(0, 50)}...`);
+          return false;
+        }
+      }
+      return true;
+    })
+    .map((alert) => {
+      // Housing alerts get lower relevance
+      const isHousing = alert.module_id === "housing";
+      const isTransit = alert.module_id === "transit";
+      const scores = scoreContent({
+        title: alert.title,
+        body: alert.body,
+        publishedAt: alert.created_at,
+        contentType: isHousing ? "housing" : isTransit ? "transit" : "alert",
+      });
+      const category = categorizeContent(alert.title, alert.body, "alert");
+      const dedupKey = generateDedupKey("alert", alert.title);
+
+      return {
+        id: alert.id,
+        title: alert.title,
+        body: alert.body,
+        createdAt: alert.created_at,
+        // Set defaults for fields not in raw query
+        sourceId: "",
+        externalId: null,
+        startsAt: null,
+        endsAt: null,
+        neighborhoods: [],
+        metadata: {},
+        expiresAt: null,
+        hypeScore: null,
+        hypeFactors: null,
+        venueType: null,
+        weatherScore: null,
+        isWeatherSafe: null,
+        embeddingModel: null,
+        embeddingAt: null,
+        topicClusterId: null,
+        scores,
+        category,
+        dedupKey,
+      } as ScoredAlertEvent;
     });
-    const category = categorizeContent(alert.title, alert.body, "alert");
-    const dedupKey = generateDedupKey("alert", alert.title);
 
-    return {
-      id: alert.id,
-      title: alert.title,
-      body: alert.body,
-      createdAt: alert.created_at,
-      // Set defaults for fields not in raw query
-      sourceId: "",
-      externalId: null,
-      startsAt: null,
-      endsAt: null,
-      neighborhoods: [],
-      metadata: {},
-      expiresAt: null,
-      hypeScore: null,
-      hypeFactors: null,
-      venueType: null,
-      weatherScore: null,
-      isWeatherSafe: null,
-      embeddingModel: null,
-      embeddingAt: null,
-      topicClusterId: null,
-      scores,
-      category,
-      dedupKey,
-    } as ScoredAlertEvent;
-  });
-
-  const clusterableAlerts = alertsWithEmbeddings.map((alert) => {
-    const scored = scoredAlerts.find(s => s.id === alert.id)!;
-    return {
-      id: alert.id,
-      embedding: parseEmbedding(alert.embedding!),
-      score: scored.scores.overall,
-      title: alert.title,
-    };
-  });
+  // Build clusterable alerts only from scored (actionable) alerts with embeddings
+  const scoredAlertIds = new Set(scoredAlerts.map(a => a.id));
+  const clusterableAlerts = alertsWithEmbeddings
+    .filter(alert => scoredAlertIds.has(alert.id))
+    .map((alert) => {
+      const scored = scoredAlerts.find(s => s.id === alert.id)!;
+      return {
+        id: alert.id,
+        embedding: parseEmbedding(alert.embedding!),
+        score: scored.scores.overall,
+        title: alert.title,
+      };
+    });
 
   const alertClusters = clusterItems(clusterableAlerts, cfg.clusterSimilarityThreshold);
   const alertClusterStats = getClusterStats(alertClusters);

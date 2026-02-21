@@ -18,11 +18,14 @@
     "db:studio": "prisma studio",
     "test": "jest",
     "test:watch": "jest --watch",
-    "migrate:users": "npx tsx scripts/migrate-users-to-nycping.ts"
+    "migrate:users": "npx tsx scripts/migrate-users-to-nycping.ts",
+    "trigger:dev": "npx trigger.dev@latest dev",
+    "trigger:deploy": "npx trigger.dev@latest deploy"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.72.1",
     "@prisma/client": "^6.19.1",
+    "@trigger.dev/sdk": "^3.3.17",
     "cheerio": "^1.2.0",
     "crypto-js": "^4.2.0",
     "dotenv": "^17.2.3",
