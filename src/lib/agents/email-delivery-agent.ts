@@ -77,7 +77,10 @@ const deadLetterQueue: DeadLetterEntry[] = [];
 // RESEND CLIENT
 // =============================================================================
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+function getResend() {
+  return new Resend(process.env.RESEND_API_KEY);
+}
+const resend = { get emails() { return getResend().emails; } };
 
 // =============================================================================
 // PRE-FLIGHT CHECKS
