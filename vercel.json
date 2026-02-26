@@ -1,169 +1,40 @@
 {
   "crons": [
-    {
-      "path": "/api/jobs/embed-content",
-      "schedule": "*/10 * * * *"
-    },
-    {
-      "path": "/api/jobs/preflight-check",
-      "schedule": "30 11 * * *"
-    },
-    {
-      "path": "/api/health?infra=true&alert=true",
-      "schedule": "0 */2 * * *"
-    },
-    {
-      "path": "/api/agents/data-quality",
-      "schedule": "0,30 * * * *"
-    },
-    {
-      "path": "/api/agents/orchestrate-digest?status=true",
-      "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/jobs/orchestrate-data",
-      "schedule": "0,30 * * * *"
-    },
-    {
-      "path": "/api/jobs/orchestrate-data?force=true",
-      "schedule": "0 6 * * *"
-    },
-    {
-      "path": "/api/health?checkStale=true",
-      "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/jobs/ingest/news-multi?tier=1",
-      "schedule": "0 5,11,17,23 * * *"
-    },
-    {
-      "path": "/api/jobs/ingest/news-multi?tier=2",
-      "schedule": "0 6,12,18 * * *"
-    },
-    {
-      "path": "/api/jobs/ingest/news-multi?tier=3",
-      "schedule": "0 7,13,19 * * *"
-    },
-    {
-      "path": "/api/jobs/curate-news",
-      "schedule": "30 6,12,18 * * *"
-    },
-
-    {
-      "_comment": "=== CITYPING TIME-SLOT EMAIL SYSTEM v2 ===",
-      "_doc": "9:00 AM ET - Morning Briefing (comprehensive daily digest)",
-      "path": "/api/jobs/email-router?slot=morning",
-      "schedule": "0 14 * * *"
-    },
-    {
-      "_comment": "12:00 PM ET - Midday Pulse (breaking alerts + updates since morning)",
-      "path": "/api/jobs/email-router?slot=noon",
-      "schedule": "0 17 * * *"
-    },
-    {
-      "_comment": "7:00 PM ET - Evening Wind-Down (day-ahead preview + tomorrow prep)",
-      "path": "/api/jobs/email-router?slot=evening",
-      "schedule": "0 0 * * *"
-    },
-
-    {
-      "_comment": "=== LEGACY JOBS (maintained during transition period) ===",
-      "_doc": "Daily digest: 7:00 AM ET (12:00 UTC)",
-      "path": "/api/jobs/send-daily-digest",
-      "schedule": "0 12 * * *"
-    },
-    {
-      "_comment": "Daily pulse: 7:30 AM ET weekdays (12:30 UTC)",
-      "path": "/api/jobs/send-daily-pulse",
-      "schedule": "30 12 * * 1-5"
-    },
-    {
-      "_comment": "Weekly digest: Sunday 8:00 AM ET (13:00 UTC)",
-      "path": "/api/jobs/send-weekly-digest",
-      "schedule": "0 13 * * 0"
-    },
-    {
-      "_comment": "Day ahead: 6:00 PM ET (23:00 UTC)",
-      "path": "/api/jobs/send-day-ahead",
-      "schedule": "0 23 * * *"
-    },
-    {
-      "_comment": "Reminders: 7:00 PM ET (00:00 UTC next day)",
-      "path": "/api/jobs/send-reminders",
-      "schedule": "0 0 * * *"
-    },
-
-    {
-      "_comment": "Process pending notifications every 10 minutes during waking hours",
-      "path": "/api/jobs/send-notifications",
-      "schedule": "*/10 7-22 * * *"
-    },
-    {
-      "path": "/api/jobs/ingest/mta-alerts",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/jobs/ingest/sample-sales",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/jobs/ingest/housing-lotteries",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/jobs/scrape-311",
-      "schedule": "0 */4 * * *"
-    },
-    {
-      "path": "/api/jobs/scrape-air-quality",
-      "schedule": "0 6,12,18 * * *"
-    },
-    {
-      "path": "/api/jobs/scrape-dining",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/jobs/scrape-parks",
-      "schedule": "0 7 * * *"
-    },
-    {
-      "path": "/api/jobs/scrape-emergency",
-      "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/jobs/scrape-events",
-      "schedule": "0 6,12,18 * * *"
-    },
-    {
-      "path": "/api/jobs/scrape-streets",
-      "schedule": "0 */4 * * *"
-    },
-
-    {
-      "_comment": "=== PREMIUM DATA SCRAPERS ===",
-      "_doc": "CitiBike GBFS: Every 5 minutes for real-time dock availability",
-      "path": "/api/jobs/scrape-citibike",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "_comment": "FAA Airports: Every 15 minutes for delay tracking",
-      "path": "/api/jobs/scrape-airports",
-      "schedule": "*/15 * * * *"
-    },
-    {
-      "_comment": "Environmental (Pollen/UV): 3x daily at 6am, 12pm, 6pm ET",
-      "path": "/api/jobs/scrape-environmental",
-      "schedule": "0 11,17,23 * * *"
-    },
-    {
-      "_comment": "Traffic scores: Every 10 min during rush hours (6-10am, 4-8pm ET)",
-      "path": "/api/jobs/scrape-traffic",
-      "schedule": "*/10 11-15,21-1 * * *"
-    },
-    {
-      "_comment": "One Thing curator: Daily at 5am ET (10:00 UTC)",
-      "path": "/api/jobs/curate-one-thing",
-      "schedule": "0 10 * * *"
-    }
+    { "path": "/api/jobs/embed-content", "schedule": "*/10 * * * *" },
+    { "path": "/api/jobs/preflight-check", "schedule": "30 11 * * *" },
+    { "path": "/api/health?infra=true&alert=true", "schedule": "0 */2 * * *" },
+    { "path": "/api/agents/data-quality", "schedule": "0,30 * * * *" },
+    { "path": "/api/agents/orchestrate-digest?status=true", "schedule": "*/15 * * * *" },
+    { "path": "/api/jobs/orchestrate-data", "schedule": "0,30 * * * *" },
+    { "path": "/api/jobs/orchestrate-data?force=true", "schedule": "0 6 * * *" },
+    { "path": "/api/health?checkStale=true", "schedule": "*/15 * * * *" },
+    { "path": "/api/jobs/ingest/news-multi?tier=1", "schedule": "0 5,11,17,23 * * *" },
+    { "path": "/api/jobs/ingest/news-multi?tier=2", "schedule": "0 6,12,18 * * *" },
+    { "path": "/api/jobs/ingest/news-multi?tier=3", "schedule": "0 7,13,19 * * *" },
+    { "path": "/api/jobs/curate-news", "schedule": "30 6,12,18 * * *" },
+    { "path": "/api/jobs/email-router?slot=morning", "schedule": "0 14 * * *" },
+    { "path": "/api/jobs/email-router?slot=noon", "schedule": "0 17 * * *" },
+    { "path": "/api/jobs/email-router?slot=evening", "schedule": "0 0 * * *" },
+    { "path": "/api/jobs/send-daily-digest", "schedule": "0 12 * * *" },
+    { "path": "/api/jobs/send-daily-pulse", "schedule": "30 12 * * 1-5" },
+    { "path": "/api/jobs/send-weekly-digest", "schedule": "0 13 * * 0" },
+    { "path": "/api/jobs/send-day-ahead", "schedule": "0 23 * * *" },
+    { "path": "/api/jobs/send-reminders", "schedule": "0 0 * * *" },
+    { "path": "/api/jobs/send-notifications", "schedule": "*/10 7-22 * * *" },
+    { "path": "/api/jobs/ingest/mta-alerts", "schedule": "*/5 * * * *" },
+    { "path": "/api/jobs/ingest/sample-sales", "schedule": "0 8 * * *" },
+    { "path": "/api/jobs/ingest/housing-lotteries", "schedule": "0 8 * * *" },
+    { "path": "/api/jobs/scrape-311", "schedule": "0 */4 * * *" },
+    { "path": "/api/jobs/scrape-air-quality", "schedule": "0 6,12,18 * * *" },
+    { "path": "/api/jobs/scrape-dining", "schedule": "0 8 * * *" },
+    { "path": "/api/jobs/scrape-parks", "schedule": "0 7 * * *" },
+    { "path": "/api/jobs/scrape-emergency", "schedule": "*/15 * * * *" },
+    { "path": "/api/jobs/scrape-events", "schedule": "0 6,12,18 * * *" },
+    { "path": "/api/jobs/scrape-streets", "schedule": "0 */4 * * *" },
+    { "path": "/api/jobs/scrape-citibike", "schedule": "*/5 * * * *" },
+    { "path": "/api/jobs/scrape-airports", "schedule": "*/15 * * * *" },
+    { "path": "/api/jobs/scrape-environmental", "schedule": "0 11,17,23 * * *" },
+    { "path": "/api/jobs/scrape-traffic", "schedule": "*/10 11-15,21-23,0-1 * * *" },
+    { "path": "/api/jobs/curate-one-thing", "schedule": "0 10 * * *" }
   ]
 }
