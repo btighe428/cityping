@@ -210,18 +210,23 @@ async function getUserEmails(userId: string): Promise<string[]> {
   
   if (!user) return []
   
-  // Also check legacy accounts
-  const phones = await prisma.phone.findMany({
-    where: { accountId: userId },
-    include: { account: { select: { email: true } } },
-  })
-  
+  // Also check legacy accounts (Phone.accountId is UUID; skip for CUID users)
+  let phones: Array<{ account: { email: string | null } | null }> = []
+  try {
+    phones = await prisma.phone.findMany({
+      where: { accountId: userId },
+      include: { account: { select: { email: true } } },
+    })
+  } catch {
+    // userId is a CUID — not compatible with legacy UUID Phone.accountId
+  }
+
   const emails = new Set<string>()
   if (user.email) emails.add(user.email.toLowerCase())
   phones.forEach(p => {
     if (p.account?.email) emails.add(p.account.email.toLowerCase())
   })
-  
+
   return Array.from(emails)
 }
 
@@ -229,12 +234,16 @@ async function getUserEmails(userId: string): Promise<string[]> {
  * Helper to get all phone IDs for a user
  */
 async function getUserPhoneIds(userId: string): Promise<string[]> {
-  const phones = await prisma.phone.findMany({
-    where: { accountId: userId },
-    select: { id: true },
-  })
-  
-  return phones.map(p => p.id)
+  try {
+    const phones = await prisma.phone.findMany({
+      where: { accountId: userId },
+      select: { id: true },
+    })
+    return phones.map(p => p.id)
+  } catch {
+    // userId is a CUID — not compatible with legacy UUID Phone.accountId
+    return []
+  }
 }
 
 /**

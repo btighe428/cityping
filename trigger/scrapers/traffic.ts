@@ -13,10 +13,10 @@ import { syncTrafficScores } from "@/lib/scrapers/traffic";
 
 export const trafficTask = schedules.task({
   id: "traffic",
-  // Every 10 minutes during rush hours
-  // 11-15 UTC = 6-10am ET, 21-01 UTC = 4-8pm ET
+  // Every 10 minutes during rush hours (timezone = ET, so hours are ET)
+  // 6-10 ET = morning rush, 16-20 ET = evening rush
   cron: {
-    pattern: "*/10 11-15,21-23 * * *",
+    pattern: "*/10 6-10,16-20 * * *",
     timezone: "America/New_York",
   },
   retry: {
