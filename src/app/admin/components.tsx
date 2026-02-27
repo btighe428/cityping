@@ -441,10 +441,546 @@ function RecentFailures({ failures }: { failures: RecentFailure[] }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Calendar tab types & helpers                                       */
+/* ------------------------------------------------------------------ */
+
+interface CalendarEvent {
+  id: string;
+  title: string;
+  date: string;
+  endDate?: string;
+  category: string;
+  source: 'city_event' | 'parks' | 'dining' | '311';
+  venue?: string;
+  borough?: string;
+  url?: string;
+}
+
+interface CalendarData {
+  month: string;
+  events: CalendarEvent[];
+  counts: Record<string, number>;
+}
+
+const CATEGORY_COLORS: Record<string, string> = {
+  culture: '#8B5CF6',
+  food: '#F59E0B',
+  civic: '#3B82F6',
+  sports: '#22C55E',
+  transit: '#6366F1',
+  seasonal: '#EC4899',
+  parks: '#10B981',
+  dining: '#F97316',
+  weather: '#64748B',
+  local: '#78716C',
+};
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function getMonthString(year: number, month: number): string {
+  return `${year}-${String(month + 1).padStart(2, '0')}`;
+}
+
+function getDaysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function getFirstDayOfWeek(year: number, month: number): number {
+  return new Date(year, month, 1).getDay();
+}
+
+/* ------------------------------------------------------------------ */
+/*  Calendar Tab component                                             */
+/* ------------------------------------------------------------------ */
+
+function CalendarTab() {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth());
+  const [calData, setCalData] = useState<CalendarData | null>(null);
+  const [calError, setCalError] = useState<string | null>(null);
+  const [calLoading, setCalLoading] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [activeCategories, setActiveCategories] = useState<Set<string>>(new Set());
+
+  const fetchCalendar = useCallback(async (y: number, m: number) => {
+    setCalLoading(true);
+    setCalError(null);
+    try {
+      const res = await fetch(`/api/admin/calendar?month=${getMonthString(y, m)}`);
+      if (!res.ok) {
+        setCalError(`Calendar API returned ${res.status}`);
+        return;
+      }
+      const json: CalendarData = await res.json();
+      setCalData(json);
+      // Initialize all categories as active
+      const cats = new Set(json.events.map((e) => e.category));
+      setActiveCategories(cats);
+    } catch (err) {
+      setCalError(err instanceof Error ? err.message : 'Network error');
+    } finally {
+      setCalLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCalendar(year, month);
+  }, [year, month, fetchCalendar]);
+
+  const goToPrevMonth = () => {
+    setSelectedDay(null);
+    if (month === 0) { setYear(year - 1); setMonth(11); }
+    else setMonth(month - 1);
+  };
+
+  const goToNextMonth = () => {
+    setSelectedDay(null);
+    if (month === 11) { setYear(year + 1); setMonth(0); }
+    else setMonth(month + 1);
+  };
+
+  const toggleCategory = (cat: string) => {
+    setActiveCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  };
+
+  // Build events-by-day map
+  const eventsByDay: Record<number, CalendarEvent[]> = {};
+  if (calData) {
+    for (const evt of calData.events) {
+      if (!activeCategories.has(evt.category)) continue;
+      const d = parseInt(evt.date.split('-')[2], 10);
+      const evtMonth = parseInt(evt.date.split('-')[1], 10) - 1;
+      const evtYear = parseInt(evt.date.split('-')[0], 10);
+      if (evtYear === year && evtMonth === month) {
+        if (!eventsByDay[d]) eventsByDay[d] = [];
+        eventsByDay[d].push(evt);
+      }
+      // For multi-day events, add dots to each day in range
+      if (evt.endDate) {
+        const endParts = evt.endDate.split('-');
+        const endYear = parseInt(endParts[0], 10);
+        const endMonth = parseInt(endParts[1], 10) - 1;
+        const endDay = parseInt(endParts[2], 10);
+        const startDay = evtYear === year && evtMonth === month ? d + 1 : 1;
+        const lastDay = endYear === year && endMonth === month
+          ? endDay
+          : getDaysInMonth(year, month);
+        if (endYear > year || (endYear === year && endMonth >= month)) {
+          for (let i = startDay; i <= lastDay; i++) {
+            if (!eventsByDay[i]) eventsByDay[i] = [];
+            eventsByDay[i].push(evt);
+          }
+        }
+      }
+    }
+  }
+
+  // Filtered event list
+  const filteredEvents = calData
+    ? calData.events.filter((e) => {
+        if (!activeCategories.has(e.category)) return false;
+        if (selectedDay !== null) {
+          const d = parseInt(e.date.split('-')[2], 10);
+          const m = parseInt(e.date.split('-')[1], 10) - 1;
+          const y = parseInt(e.date.split('-')[0], 10);
+          if (y !== year || m !== month || d !== selectedDay) return false;
+        }
+        return true;
+      })
+    : [];
+
+  const daysInMonth = getDaysInMonth(year, month);
+  const firstDay = getFirstDayOfWeek(year, month);
+
+  // All categories present in data
+  const allCategories = calData
+    ? [...new Set(calData.events.map((e) => e.category))].sort()
+    : [];
+
+  const totalEvents = calData ? calData.events.length : 0;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {calError && (
+        <div
+          style={{
+            background: '#FEF2F2',
+            border: '1px solid #FECACA',
+            borderRadius: 8,
+            padding: '12px 16px',
+            color: '#991B1B',
+            fontSize: 14,
+          }}
+        >
+          {calError}
+        </div>
+      )}
+
+      {/* Month navigation */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <button
+          onClick={goToPrevMonth}
+          style={{
+            padding: '6px 14px',
+            border: '1px solid #E8E4DF',
+            borderRadius: 6,
+            background: '#fff',
+            fontSize: 16,
+            cursor: 'pointer',
+            color: '#2C2C2C',
+          }}
+        >
+          &lt;
+        </button>
+        <div style={{ textAlign: 'center' }}>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#2C2C2C' }}>
+            {MONTH_NAMES[month]} {year}
+          </h2>
+          <div style={{ fontSize: 12, color: '#6B6B6B', marginTop: 2 }}>
+            {calLoading ? 'Loading...' : `${totalEvents} events`}
+          </div>
+        </div>
+        <button
+          onClick={goToNextMonth}
+          style={{
+            padding: '6px 14px',
+            border: '1px solid #E8E4DF',
+            borderRadius: 6,
+            background: '#fff',
+            fontSize: 16,
+            cursor: 'pointer',
+            color: '#2C2C2C',
+          }}
+        >
+          &gt;
+        </button>
+      </div>
+
+      {/* Category filter chips */}
+      {allCategories.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {allCategories.map((cat) => {
+            const isActive = activeCategories.has(cat);
+            const color = CATEGORY_COLORS[cat] ?? '#6B6B6B';
+            return (
+              <button
+                key={cat}
+                onClick={() => toggleCategory(cat)}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: 999,
+                  border: `1px solid ${color}`,
+                  background: isActive ? color : '#fff',
+                  color: isActive ? '#fff' : color,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textTransform: 'capitalize',
+                  opacity: isActive ? 1 : 0.6,
+                }}
+              >
+                {cat} {calData?.counts[cat] ? `(${calData.counts[cat]})` : ''}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Month grid */}
+      <div
+        style={{
+          background: '#fff',
+          border: '1px solid #E8E4DF',
+          borderRadius: 12,
+          padding: 12,
+          overflowX: 'auto',
+        }}
+      >
+        {/* Day-of-week headers */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(7, 1fr)',
+            gap: 2,
+            marginBottom: 4,
+          }}
+        >
+          {DAY_NAMES.map((d) => (
+            <div
+              key={d}
+              style={{
+                textAlign: 'center',
+                fontSize: 11,
+                fontWeight: 600,
+                color: '#6B6B6B',
+                textTransform: 'uppercase',
+                padding: '4px 0',
+              }}
+            >
+              {d}
+            </div>
+          ))}
+        </div>
+        {/* Day cells */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(7, 1fr)',
+            gap: 2,
+          }}
+        >
+          {/* Empty cells for offset */}
+          {Array.from({ length: firstDay }).map((_, i) => (
+            <div key={`empty-${i}`} style={{ minHeight: 64 }} />
+          ))}
+          {/* Day cells */}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const day = i + 1;
+            const dayEvents = eventsByDay[day] ?? [];
+            const isSelected = selectedDay === day;
+            const isToday =
+              day === now.getDate() &&
+              month === now.getMonth() &&
+              year === now.getFullYear();
+
+            // Unique categories for dot display
+            const dotCats = [...new Set(dayEvents.map((e) => e.category))].slice(0, 5);
+
+            return (
+              <div
+                key={day}
+                onClick={() => setSelectedDay(isSelected ? null : day)}
+                style={{
+                  minHeight: 64,
+                  padding: 4,
+                  borderRadius: 6,
+                  border: isSelected
+                    ? '2px solid #8B6F47'
+                    : isToday
+                      ? '2px solid #E8E4DF'
+                      : '1px solid transparent',
+                  background: isSelected ? '#FAF3EB' : isToday ? '#FDFCFA' : 'transparent',
+                  cursor: 'pointer',
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: isToday ? 700 : 400,
+                    color: isToday ? '#8B6F47' : '#2C2C2C',
+                    marginBottom: 2,
+                  }}
+                >
+                  {day}
+                </div>
+                {dayEvents.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                    {dotCats.map((cat) => (
+                      <span
+                        key={cat}
+                        style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: '50%',
+                          background: CATEGORY_COLORS[cat] ?? '#6B6B6B',
+                          display: 'inline-block',
+                        }}
+                      />
+                    ))}
+                    {dayEvents.length > 5 && (
+                      <span style={{ fontSize: 9, color: '#6B6B6B', lineHeight: '7px' }}>
+                        +{dayEvents.length - 5}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {dayEvents.length > 0 && (
+                  <div style={{ fontSize: 9, color: '#6B6B6B', marginTop: 2 }}>
+                    {dayEvents.length}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Event list */}
+      <div>
+        <h2 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700, color: '#2C2C2C' }}>
+          {selectedDay !== null
+            ? `Events on ${MONTH_NAMES[month]} ${selectedDay}`
+            : 'All Events'}
+          <span style={{ fontWeight: 400, fontSize: 13, color: '#6B6B6B', marginLeft: 8 }}>
+            ({filteredEvents.length})
+          </span>
+        </h2>
+        {filteredEvents.length === 0 ? (
+          <div
+            style={{
+              background: '#fff',
+              border: '1px solid #E8E4DF',
+              borderRadius: 8,
+              padding: '24px 16px',
+              textAlign: 'center',
+              color: '#6B6B6B',
+              fontSize: 14,
+            }}
+          >
+            {calLoading ? 'Loading events...' : 'No events found'}
+          </div>
+        ) : (
+          <div
+            style={{
+              overflowX: 'auto',
+              background: '#fff',
+              border: '1px solid #E8E4DF',
+              borderRadius: 8,
+            }}
+          >
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #E8E4DF' }}>
+                  <th style={thStyle}>Date</th>
+                  <th style={thStyle}>Category</th>
+                  <th style={thStyle}>Title</th>
+                  <th style={thStyle}>Venue</th>
+                  <th style={thStyle}>Source</th>
+                  <th style={thStyle}>Borough</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredEvents.slice(0, 100).map((evt) => (
+                  <tr key={evt.id} style={{ borderBottom: '1px solid #E8E4DF' }}>
+                    <td style={{ padding: '8px 12px', fontSize: 13, color: '#6B6B6B', whiteSpace: 'nowrap' }}>
+                      {evt.date}
+                      {evt.endDate && evt.endDate !== evt.date && (
+                        <span style={{ color: '#9CA3AF' }}> - {evt.endDate}</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '8px 12px' }}>
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: '#fff',
+                          background: CATEGORY_COLORS[evt.category] ?? '#6B6B6B',
+                          textTransform: 'capitalize',
+                        }}
+                      >
+                        {evt.category}
+                      </span>
+                    </td>
+                    <td style={{ padding: '8px 12px', fontSize: 13, color: '#2C2C2C', maxWidth: 300 }}>
+                      {evt.url ? (
+                        <a
+                          href={evt.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: '#8B6F47', textDecoration: 'none' }}
+                        >
+                          {evt.title}
+                        </a>
+                      ) : (
+                        evt.title
+                      )}
+                    </td>
+                    <td style={{ padding: '8px 12px', fontSize: 12, color: '#6B6B6B' }}>
+                      {evt.venue ?? '-'}
+                    </td>
+                    <td style={{ padding: '8px 12px', fontSize: 12, color: '#6B6B6B' }}>
+                      {evt.source}
+                    </td>
+                    <td style={{ padding: '8px 12px', fontSize: 12, color: '#6B6B6B' }}>
+                      {evt.borough ?? '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {filteredEvents.length > 100 && (
+              <div style={{ padding: '8px 12px', fontSize: 12, color: '#6B6B6B', textAlign: 'center' }}>
+                Showing 100 of {filteredEvents.length} events
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Tab bar                                                            */
+/* ------------------------------------------------------------------ */
+
+type TabId = 'ops' | 'calendar';
+
+function TabBar({ active, onChange }: { active: TabId; onChange: (tab: TabId) => void }) {
+  const tabs: { id: TabId; label: string }[] = [
+    { id: 'ops', label: 'Ops' },
+    { id: 'calendar', label: 'Calendar' },
+  ];
+
+  return (
+    <div
+      style={{
+        display: 'inline-flex',
+        background: '#E8E4DF',
+        borderRadius: 8,
+        padding: 3,
+        gap: 2,
+      }}
+    >
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          onClick={() => onChange(tab.id)}
+          style={{
+            padding: '6px 16px',
+            borderRadius: 6,
+            border: 'none',
+            background: active === tab.id ? '#fff' : 'transparent',
+            color: active === tab.id ? '#2C2C2C' : '#6B6B6B',
+            fontSize: 13,
+            fontWeight: active === tab.id ? 600 : 400,
+            cursor: 'pointer',
+            boxShadow: active === tab.id ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+          }}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main dashboard component                                           */
 /* ------------------------------------------------------------------ */
 
 export function AdminDashboard() {
+  const [activeTab, setActiveTab] = useState<TabId>('ops');
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -467,7 +1003,7 @@ export function AdminDashboard() {
     }
   }, []);
 
-  // Fetch on mount and every 30 seconds
+  // Fetch on mount and every 30 seconds (ops tab data)
   useEffect(() => {
     fetchDashboard();
     const interval = setInterval(fetchDashboard, 30_000);
@@ -487,25 +1023,30 @@ export function AdminDashboard() {
           alignItems: 'center',
         }}
       >
-        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>CityPing Ops Dashboard</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>CityPing Admin</h1>
+          <TabBar active={activeTab} onChange={setActiveTab} />
+        </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          {loading && (
+          {loading && activeTab === 'ops' && (
             <span style={{ fontSize: 12, color: '#6B6B6B' }}>refreshing...</span>
           )}
-          <button
-            onClick={fetchDashboard}
-            style={{
-              padding: '6px 12px',
-              border: '1px solid #E8E4DF',
-              borderRadius: 6,
-              background: '#fff',
-              fontSize: 13,
-              cursor: 'pointer',
-              color: '#2C2C2C',
-            }}
-          >
-            Refresh
-          </button>
+          {activeTab === 'ops' && (
+            <button
+              onClick={fetchDashboard}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #E8E4DF',
+                borderRadius: 6,
+                background: '#fff',
+                fontSize: 13,
+                cursor: 'pointer',
+                color: '#2C2C2C',
+              }}
+            >
+              Refresh
+            </button>
+          )}
           <a
             href="/"
             style={{
@@ -535,36 +1076,42 @@ export function AdminDashboard() {
           gap: 20,
         }}
       >
-        {error && (
-          <div
-            style={{
-              background: '#FEF2F2',
-              border: '1px solid #FECACA',
-              borderRadius: 8,
-              padding: '12px 16px',
-              color: '#991B1B',
-              fontSize: 14,
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        {data && (
+        {activeTab === 'ops' && (
           <>
-            <StatusBanner data={data} />
-            <StatsRow data={data} />
-            <JobPipelineGrid jobs={data.jobs} />
-            <EmailBreakdown email={data.email} />
-            <RecentFailures failures={data.recentFailures} />
+            {error && (
+              <div
+                style={{
+                  background: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                  borderRadius: 8,
+                  padding: '12px 16px',
+                  color: '#991B1B',
+                  fontSize: 14,
+                }}
+              >
+                {error}
+              </div>
+            )}
+
+            {data && (
+              <>
+                <StatusBanner data={data} />
+                <StatsRow data={data} />
+                <JobPipelineGrid jobs={data.jobs} />
+                <EmailBreakdown email={data.email} />
+                <RecentFailures failures={data.recentFailures} />
+              </>
+            )}
+
+            {!data && !error && (
+              <div style={{ textAlign: 'center', padding: 48, color: '#6B6B6B', fontSize: 14 }}>
+                Loading dashboard...
+              </div>
+            )}
           </>
         )}
 
-        {!data && !error && (
-          <div style={{ textAlign: 'center', padding: 48, color: '#6B6B6B', fontSize: 14 }}>
-            Loading dashboard...
-          </div>
-        )}
+        {activeTab === 'calendar' && <CalendarTab />}
       </div>
     </div>
   );
