@@ -96,27 +96,35 @@ export async function fetch311Alerts(): Promise<ServiceAlert[]> {
   console.log("[311] Fetching service alerts...");
 
   // Get alerts from last 24 hours
+  // Use toISOString() but strip the milliseconds and Z suffix — the Socrata
+  // SODA API does not accept the full ISO-8601 format with ".000Z".
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const sinceStr = since.toISOString();
+  const sinceStr = since.toISOString().replace(/\.\d{3}Z$/, "");
 
   // Build query with filters
   const complaintTypeFilter = TRACKED_COMPLAINT_TYPES.map(
     (t) => `complaint_type='${t}'`
   ).join(" OR ");
 
-  const params = new URLSearchParams({
-    $where: `created_date > '${sinceStr}' AND status != 'Closed' AND (${complaintTypeFilter})`,
-    $limit: "200",
-    $order: "created_date DESC",
-  });
+  const whereClause = `created_date > '${sinceStr}' AND status != 'Closed' AND (${complaintTypeFilter})`;
+
+  // NOTE: Do NOT use URLSearchParams for Socrata SODA parameters.
+  // URLSearchParams encodes the leading '$' in parameter names like $where
+  // to '%24where', which causes the API to return 400 Bad Request.
+  // Instead, manually build the query string and use encodeURIComponent
+  // only on the parameter VALUES.
+  let queryString =
+    `$where=${encodeURIComponent(whereClause)}` +
+    `&$limit=200` +
+    `&$order=${encodeURIComponent("created_date DESC")}`;
 
   // Add app token if available
   const appToken = process.env.NYC_OPEN_DATA_APP_TOKEN;
   if (appToken) {
-    params.set("$$app_token", appToken);
+    queryString += `&$$app_token=${encodeURIComponent(appToken)}`;
   }
 
-  const url = `${API_BASE}?${params.toString()}`;
+  const url = `${API_BASE}?${queryString}`;
 
   try {
     const response = await fetch(url, {

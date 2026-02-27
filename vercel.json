@@ -35,6 +35,8 @@
     { "path": "/api/jobs/scrape-airports", "schedule": "*/15 * * * *" },
     { "path": "/api/jobs/scrape-environmental", "schedule": "0 11,17,23 * * *" },
     { "path": "/api/jobs/scrape-traffic", "schedule": "*/10 11-15,21-23,0-1 * * *" },
+    { "path": "/api/jobs/scrape-ferry", "schedule": "*/15 * * * *" },
+    { "path": "/api/jobs/ingest/nyc-events", "schedule": "0 9 * * *" },
     { "path": "/api/jobs/curate-one-thing", "schedule": "0 10 * * *" }
   ]
 }

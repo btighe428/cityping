@@ -64,7 +64,7 @@ export const JOB_CONFIGS: Record<string, { displayName: string; frequency: strin
   "ingest-nyc-events": { displayName: "NYC Events", frequency: "24h", alertAfterMissed: 2 },
   "ingest-sample-sales": { displayName: "Sample Sales", frequency: "24h", alertAfterMissed: 2 },
   "ingest-housing-lotteries": { displayName: "Housing Lotteries", frequency: "24h", alertAfterMissed: 2 },
-  "ingest-news": { displayName: "News Ingestion", frequency: "24h", alertAfterMissed: 2 },
+  // ingest-news replaced by ingest/news-multi (3 tiers) — removed from monitoring
   "curate-news": { displayName: "News Curation", frequency: "24h", alertAfterMissed: 2 },
   "send-daily-pulse": { displayName: "Daily Pulse Email", frequency: "24h", alertAfterMissed: 1 },
   "send-day-ahead": { displayName: "Day Ahead Email", frequency: "24h", alertAfterMissed: 1 },
