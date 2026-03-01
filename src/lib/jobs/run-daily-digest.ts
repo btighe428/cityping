@@ -246,7 +246,7 @@ export async function runDailyDigestJob(
   // -------------------------------------------------------------------------
   for (const user of users) {
     try {
-      const isPremium = user.tier === "premium";
+      const isPremium = true; // All users get premium sections by default
 
       const { pendingNotifications, groupedEvents, feedbackTokens } =
         await processPendingNotifications(user.id, now);
