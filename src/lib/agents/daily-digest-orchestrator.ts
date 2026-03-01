@@ -468,7 +468,7 @@ export async function generateDailyDigest(
       const horizonResult = await generateHorizonAlerts({
         today,
         includePremium: true,
-        maxAlerts: 20,
+        maxAlerts: 30,
       });
 
       totalTokens += horizonResult.tokensUsed;

@@ -82,7 +82,7 @@ async function getDatabaseAlerts(
       where: {
         startsAt: {
           gte: todayStart.toJSDate(),
-          lte: todayStart.plus({ days: 45 }).toJSDate(),
+          lte: todayStart.plus({ days: 60 }).toJSDate(),
         },
         status: "published",
       },
@@ -147,20 +147,20 @@ function getDefaultAlertDays(category: string, title: string): number[] {
 
   // Major events get more notice
   if (titleLower.includes("parade") || titleLower.includes("marathon")) {
-    return [21, 14, 7, 3, 1];
+    return [21, 14, 10, 7, 5, 3, 1, 0];
   }
   if (titleLower.includes("festival") || titleLower.includes("week")) {
-    return [14, 7, 3, 1];
+    return [14, 10, 7, 5, 3, 1, 0];
   }
   if (category === "civic" || titleLower.includes("deadline") || titleLower.includes("tax")) {
-    return [14, 7, 3, 1, 0];
+    return [14, 10, 7, 5, 3, 1, 0];
   }
   if (category === "sports") {
-    return [7, 3, 1];
+    return [14, 10, 7, 5, 3, 1, 0];
   }
 
   // Default for most events
-  return [7, 3, 1];
+  return [14, 10, 7, 5, 3, 1, 0];
 }
 
 /**
@@ -210,7 +210,7 @@ export async function generateHorizonAlerts(
   options?: HorizonOptions
 ): Promise<HorizonResult> {
   const today = options?.today || DateTime.now();
-  const maxAlerts = options?.maxAlerts || 10; // Increased for more events
+  const maxAlerts = options?.maxAlerts || 20; // Doubled for more horizon events
   const useLLM = options?.useLLM !== false; // Default to true
   const errors: string[] = [];
 

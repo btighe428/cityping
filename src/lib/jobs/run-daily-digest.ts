@@ -34,6 +34,7 @@ import {
   buildEnhancedDigestText,
 } from "@/lib/email-templates-enhanced";
 import { sendEmailTracked } from "@/lib/email-outbox";
+import { buildPremiumSections } from "@/lib/premium/email-sections";
 
 // =============================================================================
 // TYPES
@@ -264,9 +265,18 @@ export async function runDailyDigestJob(
       let subject: string;
 
       if (enhancedDigest && result.mode === "enhanced") {
+        // Build premium sections (radar, pollen, satellite, etc.)
+        let premiumSections = null;
+        try {
+          premiumSections = await buildPremiumSections(user.id, isPremium);
+        } catch (error) {
+          console.warn(`[DailyDigest] Premium sections failed for ${user.email}:`, error);
+        }
+
         html = buildEnhancedDigestHtml(enhancedDigest, {
           isPremium,
           referralCode: referralCode || undefined,
+          premiumSections,
         });
         const dateStr = enhancedDigest.meta.generatedAt.toFormat("MMMM d");
         subject = `CityPing Daily - ${dateStr}`;
