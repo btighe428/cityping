@@ -23,6 +23,15 @@ import { getActiveFerryAlerts, formatFerryAlertsForDigest } from "../scrapers/fe
 import { getTodaysWearDecision, formatWearDecisionForDigest, getQuickWearLine } from "./coat-umbrella";
 import { getTodaysOneThing, formatOneThingForDigest } from "./one-thing-curator";
 import { prisma } from "../db";
+import { cardImageUrl } from "../cards/url-builder";
+import type {
+  TrafficCardData,
+  CitiBikeCardData,
+  AirportCardData,
+  EnvironmentalCardData,
+  FerryCardData,
+  CoatCardData,
+} from "../cards/types";
 
 // ============================================================================
 // TYPES
@@ -65,14 +74,19 @@ async function buildAirportSection(): Promise<PremiumSection | null> {
 
     const delayLines = activeDelays.map(formatDelayForDigest);
 
-    const html = `
-      <div style="background-color: #F5F1E8; padding: 12px 16px; border-radius: 8px; margin: 8px 0; border-left: 4px solid #8B7355;">
-        <div style="font-size: 14px; font-weight: 600; color: #2d2d2d; margin-bottom: 8px;">
-          ✈️ Airport Delays
-        </div>
-        ${delayLines.map((line) => `<div style="font-size: 13px; color: #5a5a5a; margin: 4px 0;">${line}</div>`).join("")}
-      </div>
-    `;
+    const cardData: AirportCardData = {
+      delays: activeDelays.map((d) => ({
+        airportCode: d.airportCode,
+        status: d.status as "delays" | "ground_stop",
+        reason: d.delayReason,
+        avgMinutes: d.avgDelayMinutes,
+      })),
+    };
+    const imgUrl = cardImageUrl("airport", cardData);
+    const html = `<div style="margin: 8px 0;">
+      <img src="${imgUrl}" alt="Airport Delays: ${delayLines.join(', ')}"
+        width="600" style="width:100%;max-width:600px;height:auto;display:block;border-radius:12px;" />
+    </div>`;
 
     const text = `✈️ AIRPORT DELAYS\n${delayLines.join("\n")}`;
 
@@ -100,11 +114,26 @@ async function buildCoatUmbrellaSection(): Promise<PremiumSection | null> {
 
     const formatted = formatWearDecisionForDigest(decision);
 
+    const cardData: CoatCardData = {
+      coat: decision.coat,
+      umbrella: decision.umbrella,
+      summary: decision.summary,
+      temperature: decision.details.temperature,
+      feelsLike: decision.details.feelsLike,
+      precipProbability: decision.details.precipProbability,
+      conditions: decision.details.conditions,
+    };
+    const imgUrl = cardImageUrl("coat", cardData);
+    const html = `<div style="margin: 8px 0;">
+      <img src="${imgUrl}" alt="What to Wear: ${decision.summary}"
+        width="600" style="width:100%;max-width:600px;height:auto;display:block;border-radius:12px;" />
+    </div>`;
+
     return {
       type: "coat_umbrella",
       title: "What to Wear",
       priority: 85,
-      html: formatted.html,
+      html,
       text: formatted.text,
       isPremiumOnly: true,
     };
@@ -133,31 +162,31 @@ async function buildWeatherRadarSection(): Promise<PremiumSection | null> {
     const satelliteUrl = `https://cdn.star.nesdis.noaa.gov/GOES16/ABI/SECTOR/ne/GEOCOLOR/latest.jpg`;
 
     const html = `
-      <div style="background-color: #F5F1E8; padding: 16px; border-radius: 8px; margin: 16px 0;">
-        <div style="font-size: 14px; font-weight: 600; color: #2d2d2d; margin-bottom: 12px;">
+      <div style="background-color: #1C1C1E; padding: 16px; border-radius: 12px; margin: 12px 0;">
+        <div style="font-size: 16px; font-weight: 700; color: #FFFFFF; margin-bottom: 12px;">
           📡 Live Weather Radar & Satellite
         </div>
         <table width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr>
             <!-- Radar -->
             <td width="50%" style="padding-right: 8px; vertical-align: top;">
-              <div style="font-size: 11px; color: #A59784; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">NYC Radar (Live)</div>
+              <div style="font-size: 11px; color: #8E8E93; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">NYC Radar (Live)</div>
               <a href="https://radar.weather.gov/?settings=v1_eyJhZ2VuZGEiOnsiaWQiOiJ3ZWF0aGVyIiwiY2VudGVyIjpbLTczLjk1LDQwLjc1XSwiem9vbSI6OX19" style="display: block;">
-                <img src="${staticRadarUrl}" alt="NYC Weather Radar" width="260" style="width: 100%; max-width: 260px; border-radius: 6px; border: 1px solid #E8DFD1; display: block;" />
+                <img src="${staticRadarUrl}" alt="NYC Weather Radar" width="260" style="width: 100%; max-width: 260px; border-radius: 8px; display: block;" />
               </a>
-              <div style="font-size: 10px; color: #A59784; margin-top: 4px;">Tap for animated radar →</div>
+              <div style="font-size: 10px; color: #636366; margin-top: 4px;">Tap for animated radar →</div>
             </td>
             <!-- Satellite -->
             <td width="50%" style="padding-left: 8px; vertical-align: top;">
-              <div style="font-size: 11px; color: #A59784; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Northeast Satellite</div>
+              <div style="font-size: 11px; color: #8E8E93; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Northeast Satellite</div>
               <a href="https://www.star.nesdis.noaa.gov/goes/sector.php?sat=G16&sector=ne" style="display: block;">
-                <img src="${satelliteUrl}" alt="Northeast Satellite" width="260" style="width: 100%; max-width: 260px; border-radius: 6px; border: 1px solid #E8DFD1; display: block;" />
+                <img src="${satelliteUrl}" alt="Northeast Satellite" width="260" style="width: 100%; max-width: 260px; border-radius: 8px; display: block;" />
               </a>
-              <div style="font-size: 10px; color: #A59784; margin-top: 4px;">GOES-16 GEOCOLOR →</div>
+              <div style="font-size: 10px; color: #636366; margin-top: 4px;">GOES-16 GEOCOLOR →</div>
             </td>
           </tr>
         </table>
-        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #E8DFD1; font-size: 11px; color: #A59784;">
+        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #2C2C2E; font-size: 11px; color: #636366;">
           💡 Green/blue = light rain • Yellow/orange = moderate • Red = heavy • Purple = severe
         </div>
       </div>
@@ -197,42 +226,23 @@ async function buildEnvironmentalSection(): Promise<PremiumSection | null> {
     if (!hasNotableConditions) return null;
 
     const items: string[] = [];
-    let itemsHtml = "";
+    const cardData: EnvironmentalCardData = {};
 
     if (readings.pollen && readings.pollen.category !== "None") {
       items.push(`Pollen (${readings.pollen.type}): ${readings.pollen.category}`);
-      const pollenColor =
-        readings.pollen.category === "High" || readings.pollen.category === "Very High"
-          ? "#8B4513"
-          : "#A0826D";
-      itemsHtml += `
-        <div style="margin: 4px 0; font-size: 13px;">
-          <span style="color: ${pollenColor};">🌿 Pollen (${readings.pollen.type}): ${readings.pollen.category}</span>
-        </div>
-      `;
+      cardData.pollen = { type: readings.pollen.type, category: readings.pollen.category };
     }
 
     if (readings.uv) {
       items.push(`UV Index: ${readings.uv.value} (${readings.uv.category})`);
-      const uvColor =
-        readings.uv.category === "High" || readings.uv.category === "Very High" || readings.uv.category === "Extreme"
-          ? "#8B4513"
-          : "#A0826D";
-      itemsHtml += `
-        <div style="margin: 4px 0; font-size: 13px;">
-          <span style="color: ${uvColor};">☀️ UV Index: ${readings.uv.value} (${readings.uv.category})</span>
-        </div>
-      `;
+      cardData.uv = { value: readings.uv.value, category: readings.uv.category };
     }
 
-    const html = `
-      <div style="background-color: #F5F1E8; padding: 12px 16px; border-radius: 8px; margin: 8px 0;">
-        <div style="font-size: 14px; font-weight: 600; color: #2d2d2d; margin-bottom: 8px;">
-          🌡️ Environmental Conditions
-        </div>
-        ${itemsHtml}
-      </div>
-    `;
+    const imgUrl = cardImageUrl("environmental", cardData);
+    const html = `<div style="margin: 8px 0;">
+      <img src="${imgUrl}" alt="Environmental: ${items.join(', ')}"
+        width="600" style="width:100%;max-width:600px;height:auto;display:block;border-radius:12px;" />
+    </div>`;
 
     const text = `🌡️ ENVIRONMENTAL\n${items.join("\n")}`;
 
@@ -263,13 +273,6 @@ async function buildTrafficSection(): Promise<PremiumSection | null> {
     // Skip if traffic data unavailable
     if (summary.label === "Data unavailable") return null;
 
-    // Color based on friction score
-    const getScoreColor = (score: number) =>
-      score >= 7 ? "#8B4513" : score >= 5 ? "#A0826D" : "#8B7355";
-
-    const getScoreEmoji = (score: number) =>
-      score >= 7 ? "🔴" : score >= 5 ? "🟡" : "🟢";
-
     // Build borough breakdown
     const regionNames: Record<string, string> = {
       manhattan_midtown: "Midtown",
@@ -288,58 +291,19 @@ async function buildTrafficSection(): Promise<PremiumSection | null> {
       }))
       .sort((a, b) => b.score - a.score); // Worst first
 
-    const boroughHtml = boroughItems.map(b => `
-      <div style="display: inline-block; margin: 2px 6px 2px 0; padding: 4px 8px; background: ${getScoreColor(b.score)}15; border-radius: 4px; font-size: 12px;">
-        <span style="color: ${getScoreColor(b.score)};">${getScoreEmoji(b.score)}</span>
-        <span style="color: #2d2d2d; font-weight: 500;">${b.name}</span>
-        <span style="color: #A59784;">${b.score}/10</span>
-      </div>
-    `).join("");
-
-    // CRZ info with rate styling
-    const crzColor = crz.rate >= 9 ? "#8B4513" : "#8B7355";
-    const savingsNote = crz.period === "peak"
-      ? "Leave before 5am or after 9pm to save $6.75"
-      : crz.period === "overnight"
-        ? "Best rate - overnight pricing active"
-        : "";
-
-    const html = `
-      <div style="background-color: #FAF7F2; padding: 12px 16px; border-radius: 8px; margin: 8px 0;">
-        <div style="font-size: 14px; font-weight: 600; color: #2d2d2d; margin-bottom: 4px;">
-          🚗 Driving Conditions
-        </div>
-        <div style="font-size: 11px; color: #A59784; margin-bottom: 10px;">Real-time traffic across NYC</div>
-
-        <!-- Overall Score -->
-        <div style="display: flex; align-items: center; margin-bottom: 12px; padding: 10px; background: white; border-radius: 6px; border: 1px solid #E8DFD1;">
-          <div style="font-size: 28px; font-weight: 700; color: ${getScoreColor(summary.averageScore)}; margin-right: 12px;">
-            ${summary.averageScore}/10
-          </div>
-          <div>
-            <div style="font-weight: 600; color: #2d2d2d;">${summary.label}</div>
-            ${summary.worstRegion && summary.worstScore >= 6
-              ? `<div style="font-size: 12px; color: #8B4513;">⚠️ ${summary.worstRegion} slowest (${summary.worstScore}/10)</div>`
-              : `<div style="font-size: 12px; color: #8B7355;">✓ No major delays</div>`
-            }
-          </div>
-        </div>
-
-        <!-- Borough Breakdown -->
-        <div style="margin-bottom: 12px;">
-          ${boroughHtml}
-        </div>
-
-        <!-- CRZ Pricing -->
-        <div style="padding: 8px 10px; background: ${crzColor}10; border-radius: 6px; border-left: 3px solid ${crzColor};">
-          <div style="font-size: 13px;">
-            <span style="font-weight: 600; color: ${crzColor};">CRZ: $${crz.rate.toFixed(2)}</span>
-            <span style="color: #64748b; margin-left: 8px;">${crz.period} rate</span>
-          </div>
-          ${savingsNote ? `<div style="font-size: 11px; color: #64748b; margin-top: 2px;">💡 ${savingsNote}</div>` : ""}
-        </div>
-      </div>
-    `;
+    const cardData: TrafficCardData = {
+      averageScore: summary.averageScore,
+      label: summary.label,
+      worstRegion: summary.worstRegion ?? undefined,
+      worstScore: summary.worstScore,
+      boroughs: boroughItems,
+      crz: { rate: crz.rate, period: crz.period },
+    };
+    const imgUrl = cardImageUrl("traffic", cardData);
+    const html = `<div style="margin: 8px 0;">
+      <img src="${imgUrl}" alt="NYC Traffic: ${summary.label} (${summary.averageScore}/10)"
+        width="600" style="width:100%;max-width:600px;height:auto;display:block;border-radius:12px;" />
+    </div>`;
 
     const boroughText = boroughItems.map(b => `  ${b.name}: ${b.score}/10 (${b.label})`).join("\n");
     const text = `🚗 DRIVING CONDITIONS\nOverall: ${summary.averageScore}/10 - ${summary.label}\n${boroughText}\nCRZ: $${crz.rate.toFixed(2)} (${crz.period})`;
@@ -363,9 +327,9 @@ async function buildTrafficSection(): Promise<PremiumSection | null> {
  */
 function getAvailabilityStatus(available: number, capacity: number): { color: string; indicator: string; status: string } {
   const pct = capacity > 0 ? (available / capacity) * 100 : 0;
-  if (pct >= 50) return { color: "#16a34a", indicator: "●", status: "Good" };
-  if (pct >= 25) return { color: "#ca8a04", indicator: "●", status: "Low" };
-  return { color: "#dc2626", indicator: "●", status: "Critical" };
+  if (pct >= 50) return { color: "#30D158", indicator: "●", status: "Good" };
+  if (pct >= 25) return { color: "#FF9F0A", indicator: "●", status: "Low" };
+  return { color: "#FF453A", indicator: "●", status: "Critical" };
 }
 
 /**
@@ -378,82 +342,39 @@ async function buildCitiBikeSection(userId: string): Promise<PremiumSection | nu
     // Only show if user has saved stations
     if (!stations.home && !stations.work) return null;
 
-    let itemsHtml = "";
     const items: string[] = [];
+    const cardStations: CitiBikeCardData["stations"] = [];
 
     if (stations.home) {
       const bikeStatus = getAvailabilityStatus(stations.home.bikesAvailable, stations.home.capacity);
-      const dockStatus = getAvailabilityStatus(stations.home.docksAvailable, stations.home.capacity);
-      const fillPct = Math.round((stations.home.bikesAvailable / stations.home.capacity) * 100);
-
       items.push(`Home (${stations.home.name}): ${stations.home.bikesAvailable}/${stations.home.capacity} bikes (${bikeStatus.status}), ${stations.home.docksAvailable} docks`);
-      itemsHtml += `
-        <div style="font-size: 13px; margin: 8px 0; padding: 10px; background: white; border-radius: 6px; border: 1px solid #e2e8f0;">
-          <div style="font-weight: 600; color: #1e40af; margin-bottom: 6px;">🏠 Home Station</div>
-          <div style="font-size: 11px; color: #64748b; margin-bottom: 8px;">${stations.home.name}</div>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <span style="color: ${bikeStatus.color}; font-size: 16px;">${bikeStatus.indicator}</span>
-              <strong style="font-size: 18px; color: #111827;">${stations.home.bikesAvailable}</strong>
-              <span style="color: #64748b; font-size: 12px;">bikes</span>
-            </div>
-            <div style="text-align: center; padding: 0 12px;">
-              <div style="width: 60px; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden;">
-                <div style="width: ${fillPct}%; height: 100%; background: ${bikeStatus.color};"></div>
-              </div>
-              <span style="font-size: 10px; color: #64748b;">${fillPct}% full</span>
-            </div>
-            <div>
-              <span style="color: ${dockStatus.color}; font-size: 16px;">${dockStatus.indicator}</span>
-              <strong style="font-size: 18px; color: #111827;">${stations.home.docksAvailable}</strong>
-              <span style="color: #64748b; font-size: 12px;">docks</span>
-            </div>
-          </div>
-        </div>
-      `;
+      cardStations.push({
+        type: "home",
+        name: stations.home.name,
+        bikesAvailable: stations.home.bikesAvailable,
+        docksAvailable: stations.home.docksAvailable,
+        capacity: stations.home.capacity,
+      });
     }
 
     if (stations.work) {
       const bikeStatus = getAvailabilityStatus(stations.work.bikesAvailable, stations.work.capacity);
-      const dockStatus = getAvailabilityStatus(stations.work.docksAvailable, stations.work.capacity);
-      const fillPct = Math.round((stations.work.bikesAvailable / stations.work.capacity) * 100);
-
       items.push(`Work (${stations.work.name}): ${stations.work.bikesAvailable}/${stations.work.capacity} bikes (${bikeStatus.status}), ${stations.work.docksAvailable} docks`);
-      itemsHtml += `
-        <div style="font-size: 13px; margin: 8px 0; padding: 10px; background: white; border-radius: 6px; border: 1px solid #e2e8f0;">
-          <div style="font-weight: 600; color: #1e40af; margin-bottom: 6px;">💼 Work Station</div>
-          <div style="font-size: 11px; color: #64748b; margin-bottom: 8px;">${stations.work.name}</div>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <span style="color: ${bikeStatus.color}; font-size: 16px;">${bikeStatus.indicator}</span>
-              <strong style="font-size: 18px; color: #111827;">${stations.work.bikesAvailable}</strong>
-              <span style="color: #64748b; font-size: 12px;">bikes</span>
-            </div>
-            <div style="text-align: center; padding: 0 12px;">
-              <div style="width: 60px; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden;">
-                <div style="width: ${fillPct}%; height: 100%; background: ${bikeStatus.color};"></div>
-              </div>
-              <span style="font-size: 10px; color: #64748b;">${fillPct}% full</span>
-            </div>
-            <div>
-              <span style="color: ${dockStatus.color}; font-size: 16px;">${dockStatus.indicator}</span>
-              <strong style="font-size: 18px; color: #111827;">${stations.work.docksAvailable}</strong>
-              <span style="color: #64748b; font-size: 12px;">docks</span>
-            </div>
-          </div>
-        </div>
-      `;
+      cardStations.push({
+        type: "work",
+        name: stations.work.name,
+        bikesAvailable: stations.work.bikesAvailable,
+        docksAvailable: stations.work.docksAvailable,
+        capacity: stations.work.capacity,
+      });
     }
 
-    const html = `
-      <div style="background-color: #eff6ff; padding: 12px 16px; border-radius: 8px; margin: 8px 0;">
-        <div style="font-size: 14px; font-weight: 600; color: #1e40af; margin-bottom: 4px;">
-          🚲 CitiBike Status
-        </div>
-        <div style="font-size: 11px; color: #64748b; margin-bottom: 8px;">Real-time availability at your saved stations</div>
-        ${itemsHtml}
-      </div>
-    `;
+    const cardData: CitiBikeCardData = { stations: cardStations };
+    const imgUrl = cardImageUrl("citibike", cardData);
+    const html = `<div style="margin: 8px 0;">
+      <img src="${imgUrl}" alt="CitiBike: ${items.join('; ')}"
+        width="600" style="width:100%;max-width:600px;height:auto;display:block;border-radius:12px;" />
+    </div>`;
 
     const text = `🚲 CITIBIKE\n${items.join("\n")}`;
 
@@ -505,27 +426,19 @@ async function buildFerrySection(): Promise<PremiumSection | null> {
     // Always show for premium - either alerts or "all clear"
     const formatted = formatFerryAlertsForDigest(alerts);
 
-    // Determine background color based on status
-    const bgColor = alerts.length === 0
-      ? "#f0fdf4" // Green tint for all clear
-      : hasSignificantAlerts
-        ? "#fef2f2" // Red tint for significant
-        : "#fffbeb"; // Yellow tint for minor
-
-    const borderColor = alerts.length === 0
-      ? "#16a34a"
-      : hasSignificantAlerts
-        ? "#dc2626"
-        : "#f59e0b";
-
-    const html = `
-      <div style="background-color: ${bgColor}; padding: 12px 16px; border-radius: 8px; margin: 8px 0; border-left: 4px solid ${borderColor};">
-        <div style="font-size: 14px; font-weight: 600; color: #334155; margin-bottom: 8px;">
-          &#128674; Ferry Status
-        </div>
-        ${formatted.html}
-      </div>
-    `;
+    const cardData: FerryCardData = {
+      alerts: alerts.map((a) => ({
+        severity: a.severity,
+        routeName: a.routeName,
+        title: a.title,
+      })),
+    };
+    const imgUrl = cardImageUrl("ferry", cardData);
+    const statusLabel = alerts.length === 0 ? "All Clear" : `${alerts.length} alert${alerts.length > 1 ? "s" : ""}`;
+    const html = `<div style="margin: 8px 0;">
+      <img src="${imgUrl}" alt="Ferry Status: ${statusLabel}"
+        width="600" style="width:100%;max-width:600px;height:auto;display:block;border-radius:12px;" />
+    </div>`;
 
     const text = `FERRY STATUS\n${formatted.text}`;
 

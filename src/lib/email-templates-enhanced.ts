@@ -602,7 +602,11 @@ export function buildEnhancedDigestHtml(
           ` : ""}</div>
 
         <!-- Premium Sections -->
-        ${options.premiumSections?.sections.map(s => s.html).join('') || ''}
+        ${options.premiumSections?.sections.length ? `
+          <div style="margin: 16px 0;">
+            ${options.premiumSections.sections.map(s => s.html).join('')}
+          </div>
+        ` : ''}
         ${options.premiumSections?.teaser?.html || ''}
 
         <!-- Enhanced Data Visualizations (only render if not already covered by a premium section) -->
