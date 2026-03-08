@@ -12,7 +12,7 @@ import { buildPremiumSections } from "@/lib/premium/email-sections";
 import { EnhancedSections } from "@/lib/premium/enhanced-sections";
 import { prisma } from "@/lib/db";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const email = req.nextUrl.searchParams.get("email");
