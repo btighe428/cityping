@@ -52,7 +52,16 @@ export interface CoatCardData {
   conditions: string;
 }
 
-export type CardType = "traffic" | "citibike" | "airport" | "environmental" | "ferry" | "coat";
+export interface MoneySaverCardData {
+  totalCount: number;
+  sampleSales: number;
+  diningDeals: number;
+  freeEvents: number;
+  housingLotteries: number;
+  topDeal?: string;
+}
+
+export type CardType = "traffic" | "citibike" | "airport" | "environmental" | "ferry" | "coat" | "money-saver";
 
 export type CardDataMap = {
   traffic: TrafficCardData;
@@ -61,4 +70,5 @@ export type CardDataMap = {
   environmental: EnvironmentalCardData;
   ferry: FerryCardData;
   coat: CoatCardData;
+  "money-saver": MoneySaverCardData;
 };

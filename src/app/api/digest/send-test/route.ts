@@ -68,13 +68,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     // Build enhanced data visualizations
     let enhancedSections = null;
     try {
-      const [commuteDashboard, citiBikeDashboard, trafficTrends, weatherTimeline] = await Promise.all([
+      const [commuteDashboard, citiBikeDashboard, trafficTrends, weatherTimeline, aspCalendar] = await Promise.all([
         EnhancedSections.buildCommuteDashboard(userId),
         EnhancedSections.buildCitiBikeDashboard(userId),
         EnhancedSections.buildTrafficTrendsSection(),
         digest.weather?.forecast
           ? Promise.resolve(EnhancedSections.buildWeatherTimeline(digest.weather.forecast))
           : Promise.resolve(""),
+        EnhancedSections.buildASPCalendar(),
       ]);
 
       enhancedSections = {
@@ -82,6 +83,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         citiBikeDashboard,
         trafficTrends,
         weatherTimeline,
+        aspCalendar,
       };
       console.log("[DigestSendTest] Enhanced sections built");
     } catch (e) {

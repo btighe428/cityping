@@ -13,6 +13,8 @@
 import { DataViz } from "./data-visualizations";
 import { prisma } from "../db";
 import { DateTime } from "luxon";
+import { getEventsInRange } from "../../config/nyc-knowledge";
+import { fetchASPStatus } from "../nyc-asp-status";
 
 // ============================================================================
 // TRAFFIC TRENDS SECTION
@@ -244,34 +246,89 @@ export async function buildCitiBikeDashboard(userId: string): Promise<string> {
 export async function buildASPCalendar(): Promise<string> {
   try {
     const now = DateTime.now().setZone("America/New_York");
-    const monthName = now.toFormat("MMMM yyyy");
+    const todayStart = now.startOf("day");
+    const lookAhead = now.plus({ days: 60 });
 
-    // Get ASP-suspended days from knowledge base or events
-    // For now, build a mock calendar showing the current month
-    const daysInMonth = now.daysInMonth || 30;
-    const firstDayOfMonth = now.startOf("month").weekday % 7; // 0=Sun
+    // Check real-time ASP status for today
+    let todaySuspended = false;
+    let todayReason = "";
+    try {
+      const aspStatus = await fetchASPStatus();
+      if (aspStatus?.isSuspended) {
+        todaySuspended = true;
+        todayReason = aspStatus.reason || "Suspended today";
+      }
+    } catch {
+      // Best-effort
+    }
 
-    // Mock ASP data (in production, pull from knowledge base)
-    const suspendedDays = new Set([1, 15, 20, 25]); // Example suspended days
-    const holidays = new Set([17]); // Example holidays
+    // If suspended today, show that
+    if (todaySuspended) {
+      return `
+        <div style="margin: 16px 0; padding: 14px 18px; background: #E8F5E9; border-radius: 10px; border-left: 4px solid #4CAF50;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${DataViz.COLORS.muted}; margin-bottom: 4px;">🅿️ PARKING</div>
+          <div style="font-size: 15px; font-weight: 600; color: #2E7D32;">ASP suspended today</div>
+          <div style="font-size: 13px; color: ${DataViz.COLORS.muted}; margin-top: 2px;">${todayReason}</div>
+        </div>
+      `;
+    }
 
-    const days = Array.from({ length: daysInMonth }, (_, i) => {
-      const date = i + 1;
-      const isToday = date === now.day;
-
-      let status: "free" | "restricted" | "holiday" | "today" = "restricted";
-      if (isToday) status = "today";
-      else if (holidays.has(date)) status = "holiday";
-      else if (suspendedDays.has(date)) status = "free";
-      else if ((now.set({ day: date }).weekday === 6) || (now.set({ day: date }).weekday === 7)) status = "free";
-
-      return { date, status };
+    // Find next suspension date from DB (take several to skip weekends)
+    const dbSuspensions = await prisma.suspensionEvent.findMany({
+      where: {
+        date: { gt: todayStart.toJSDate(), lte: lookAhead.toJSDate() },
+      },
+      orderBy: { date: "asc" },
+      take: 10,
+      select: { date: true, summary: true },
     });
 
+    // Find next parking event from knowledge base
+    const kbEvents = getEventsInRange(todayStart.plus({ days: 1 }), lookAhead, {
+      categories: ["parking"],
+      includePremium: true,
+    });
+
+    // Find the earliest next suspension, skipping weekends (ASP not enforced Sat/Sun)
+    let nextDate: DateTime | null = null;
+    let nextReason = "";
+
+    for (const s of dbSuspensions) {
+      const dt = DateTime.fromJSDate(s.date);
+      if (dt.weekday === 6 || dt.weekday === 7) continue; // skip weekends
+      nextDate = dt;
+      nextReason = s.summary || "Holiday suspension";
+      break;
+    }
+
+    for (const kb of kbEvents) {
+      if (kb.date.weekday === 6 || kb.date.weekday === 7) continue; // skip weekends
+      if (!nextDate || kb.date < nextDate) {
+        nextDate = kb.date;
+        nextReason = kb.event.shortTitle;
+      }
+      break;
+    }
+
+    if (!nextDate) {
+      return `
+        <div style="margin: 16px 0; padding: 14px 18px; background: ${DataViz.COLORS.backgroundAlt}; border-radius: 10px; border-left: 4px solid ${DataViz.COLORS.muted};">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${DataViz.COLORS.muted}; margin-bottom: 4px;">🅿️ PARKING</div>
+          <div style="font-size: 15px; font-weight: 600; color: ${DataViz.COLORS.primary};">ASP rules in effect</div>
+          <div style="font-size: 13px; color: ${DataViz.COLORS.muted}; margin-top: 2px;">No upcoming suspensions in the next 60 days</div>
+        </div>
+      `;
+    }
+
+    const daysUntil = Math.floor(nextDate.diff(todayStart, "days").days);
+    const dateStr = nextDate.toFormat("EEE, MMM d");
+    const daysLabel = daysUntil === 1 ? "tomorrow" : `in ${daysUntil} days`;
+
     return `
-      <div style="margin: 24px 0;">
-        ${DataViz.sectionHeader("PARKING", "ASP Calendar")}
-        ${DataViz.miniCalendar({ month: monthName, days, startDay: firstDayOfMonth })}
+      <div style="margin: 16px 0; padding: 14px 18px; background: ${DataViz.COLORS.backgroundAlt}; border-radius: 10px; border-left: 4px solid #F5C842;">
+        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${DataViz.COLORS.muted}; margin-bottom: 4px;">🅿️ PARKING</div>
+        <div style="font-size: 15px; font-weight: 600; color: ${DataViz.COLORS.primary};">Next ASP suspension: ${dateStr}</div>
+        <div style="font-size: 13px; color: ${DataViz.COLORS.muted}; margin-top: 2px;">${nextReason} · ${daysLabel}</div>
       </div>
     `;
   } catch (error) {

@@ -22,6 +22,7 @@ import type {
   BriefingItem,
   AgendaEvent,
 } from "./agents/daily-digest-orchestrator";
+import type { WeekendPlan } from "./agents/weekend-planner-agent";
 import type { ClusterForEmail } from "./agents/clustering-agent";
 import { buildPremiumSections, type PremiumSectionsResult } from "./premium/email-sections";
 import { EnhancedSections } from "./premium/enhanced-sections";
@@ -181,6 +182,80 @@ function buildHorizonSection(
         ${alertItems}
         ${premiumTeaser}
       </table>
+    </div>
+  `;
+}
+
+/**
+ * Build THE WEEKEND section - weekend activity recommendations (Thu-Sat only).
+ */
+function buildWeekendSection(plan: WeekendPlan | null): string {
+  if (!plan) return "";
+
+  const allPicks = [
+    ...plan.outdoorPicks.map(p => ({ ...p, type: "outdoor" as const })),
+    ...plan.indoorAlternatives.map(p => ({ ...p, type: "indoor" as const })),
+  ].slice(0, 6);
+
+  if (allPicks.length === 0 && !plan.recommendation) return "";
+
+  const pickItems = allPicks
+    .map(pick => `
+      <tr>
+        <td style="padding: 8px 0; border-bottom: 1px solid ${COLORS.border};">
+          <div style="display: flex; align-items: center;">
+            <span style="font-size: 18px; margin-right: 10px;">${escapeHtml(pick.icon)}</span>
+            <div style="flex: 1;">
+              <span style="font-weight: 500; color: ${COLORS.primary}; font-size: 14px;">${escapeHtml(pick.title)}</span>
+              ${pick.venue ? `<span style="font-size: 12px; color: ${COLORS.muted}; margin-left: 6px;">${escapeHtml(pick.venue)}</span>` : ""}
+            </div>
+            <div style="display: flex; gap: 4px; align-items: center;">
+              <span style="font-size: 11px; color: ${COLORS.muted}; background: ${pick.type === "outdoor" ? "#E8F5E9" : "#FFF3E0"}; padding: 2px 6px; border-radius: 4px;">
+                ${pick.type === "outdoor" ? "outdoor" : "indoor"}
+              </span>
+              <span style="font-size: 11px; color: ${COLORS.accent}; font-weight: 600;">${pick.date}</span>
+              ${pick.isFree ? `<span style="font-size: 10px; color: #4CAF50; font-weight: 600;">FREE</span>` : ""}
+            </div>
+          </div>
+        </td>
+      </tr>
+    `)
+    .join("");
+
+  const weatherBanner = plan.weatherDriven
+    ? `<div style="background: #FFF3E0; padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; font-size: 12px; color: #E65100;">
+        Rain in the forecast - we've loaded up indoor options
+      </div>`
+    : "";
+
+  return `
+    <div style="margin-bottom: 32px;">
+      <h2 style="
+        color: ${COLORS.primary};
+        font-size: 14px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin: 0 0 16px 0;
+        padding-bottom: 8px;
+        border-bottom: 3px solid #4CAF50;
+      ">
+        THE WEEKEND
+      </h2>
+      <p style="font-size: 14px; color: ${COLORS.secondary}; margin: 0 0 12px 0; font-style: italic; line-height: 1.5;">
+        ${escapeHtml(plan.recommendation)}
+      </p>
+      ${weatherBanner}
+      <table style="width: 100%; border-collapse: collapse;">
+        ${pickItems}
+      </table>
+      ${plan.freeThings.length > 0 ? `
+        <div style="margin-top: 12px; padding: 10px 12px; background: #F1F8E9; border-radius: 6px;">
+          <span style="font-size: 12px; font-weight: 600; color: #33691E;">
+            ${plan.freeThings.length} free things to do this weekend
+          </span>
+        </div>
+      ` : ""}
     </div>
   `;
 }
@@ -446,6 +521,8 @@ export function buildEnhancedDigestHtml(
     isPremium
   );
 
+  const weekendSection = buildWeekendSection(digest.weekendPlan);
+
   const deepDiveSection = buildDeepDiveSection(digest.deepDive.clustersForEmail);
 
   const briefingSection = buildBriefingSection(digest.briefing.items);
@@ -630,6 +707,7 @@ export function buildEnhancedDigestHtml(
 
         <!-- Main Content -->
         ${horizonSection}
+        ${weekendSection}
         ${deepDiveSection}
 
         <!-- Upgrade CTA -->
@@ -721,6 +799,22 @@ export function buildEnhancedDigestText(
       lines.push(`   ${alert.message}`);
       lines.push("");
     }
+  }
+
+  // Weekend Plan
+  if (digest.weekendPlan) {
+    lines.push("THE WEEKEND");
+    lines.push("-".repeat(30));
+    lines.push(digest.weekendPlan.recommendation);
+    lines.push("");
+    const allPicks = [
+      ...digest.weekendPlan.outdoorPicks.map(p => `  ${p.icon} ${p.title} (${p.date}${p.isFree ? ", FREE" : ""})`),
+      ...digest.weekendPlan.indoorAlternatives.slice(0, 3).map(p => `  ${p.icon} ${p.title} (${p.date}, indoor)`),
+    ];
+    for (const pick of allPicks.slice(0, 6)) {
+      lines.push(pick);
+    }
+    lines.push("");
   }
 
   // Deep Dive

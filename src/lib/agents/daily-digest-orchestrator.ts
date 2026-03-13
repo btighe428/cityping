@@ -57,6 +57,8 @@ import type {
   HealthReport,
 } from "./types";
 import type { NanoAppSubject } from "./subject-line-nano-app";
+import { generateWeekendPlan, type WeekendPlan } from "./weekend-planner-agent";
+import { aggregateMoneySavers, type MoneySaverResult } from "./money-saver-agent";
 
 // =============================================================================
 // TYPES
@@ -128,6 +130,12 @@ export interface DailyDigestContent {
     boostedCount: number;
     filteredCount: number;
   } | null;
+
+  // WEEKEND PLAN - Thu-Sat only
+  weekendPlan: WeekendPlan | null;
+
+  // MONEY SAVER - Active deals aggregation
+  moneySaver: MoneySaverResult | null;
 
   // Standard content (for fallback/backwards compatibility)
   standardContent: {
@@ -492,6 +500,32 @@ export async function generateDailyDigest(
   stages.horizon.durationMs = Date.now() - horizonStart;
 
   // =========================================================================
+  // STAGE 3.5: WEEKEND PLANNER (Thu-Sat only)
+  // =========================================================================
+  let weekendPlan: WeekendPlan | null = null;
+  try {
+    weekendPlan = await generateWeekendPlan(weather, today);
+    if (weekendPlan) {
+      console.log(`\n[Stage 3.5] 🗓️  Weekend plan: ${weekendPlan.outdoorPicks.length} outdoor, ${weekendPlan.indoorAlternatives.length} indoor, ${weekendPlan.freeThings.length} free`);
+    }
+  } catch (error) {
+    errors.push(`Weekend: ${error instanceof Error ? error.message : "Unknown"}`);
+  }
+
+  // =========================================================================
+  // STAGE 3.75: MONEY SAVER (always runs)
+  // =========================================================================
+  let moneySaver: MoneySaverResult | null = null;
+  try {
+    moneySaver = await aggregateMoneySavers(today);
+    if (moneySaver && moneySaver.totalSavings > 0) {
+      console.log(`\n[Stage 3.75] 💰 Money saver: ${moneySaver.totalSavings} active deals`);
+    }
+  } catch (error) {
+    errors.push(`MoneySaver: ${error instanceof Error ? error.message : "Unknown"}`);
+  }
+
+  // =========================================================================
   // BUILD BRIEFING ITEMS (max 6 headlines for clean digest)
   // =========================================================================
   const briefingItems = buildBriefingItems(alerts, unclustered, curation, 6);
@@ -544,6 +578,8 @@ export async function generateDailyDigest(
   console.log(`║  Deep Dive: ${clusters.length} clusters`.padEnd(63) + "║");
   console.log(`║  Briefing: ${briefingItems.length} items`.padEnd(63) + "║");
   console.log(`║  Agenda: ${agendaEvents.length} events`.padEnd(63) + "║");
+  console.log(`║  Weekend: ${weekendPlan ? `${weekendPlan.outdoorPicks.length + weekendPlan.indoorAlternatives.length} picks` : "N/A (Mon-Wed)"}`.padEnd(63) + "║");
+  console.log(`║  Money Saver: ${moneySaver ? `${moneySaver.totalSavings} deals` : "none"}`.padEnd(63) + "║");
   console.log(`║  Tokens: ${totalTokens} (~$${estimatedCost.toFixed(4)})`.padEnd(63) + "║");
   console.log(`║  Time: ${processingTimeMs}ms`.padEnd(63) + "║");
   console.log("╚══════════════════════════════════════════════════════════════╝");
@@ -556,6 +592,8 @@ export async function generateDailyDigest(
     briefing: { items: briefingItems },
     agenda: { events: agendaEvents, windowDays: agendaWindowDays },
     personalization: personalizationData,
+    weekendPlan,
+    moneySaver,
     standardContent: { news, alerts },
     meta: {
       generatedAt: today,
@@ -776,6 +814,8 @@ export function summarizeDigest(digest: DailyDigestContent): string {
     `Deep Dive: ${deepDive.clusters.length} clusters`,
     `Briefing: ${briefing.items.length} items`,
     `Agenda: ${agenda.events.length} events (${agenda.windowDays}-day window)`,
+    digest.weekendPlan ? `Weekend: ${digest.weekendPlan.outdoorPicks.length} outdoor, ${digest.weekendPlan.indoorAlternatives.length} indoor, ${digest.weekendPlan.freeThings.length} free` : "",
+    digest.moneySaver ? `Money Saver: ${digest.moneySaver.totalSavings} active deals` : "",
     ``,
     `Tokens: ${meta.tokensUsed} (~$${meta.estimatedCost.toFixed(4)})`,
     `Time: ${meta.processingTimeMs}ms`,

@@ -18,6 +18,7 @@ import { DateTime } from "luxon";
 import { getOpenAIClient } from "../embeddings/openai-client";
 import {
   getAlertsForToday,
+  getEventsInRange,
   KnownEvent,
   formatEventDate,
   applyMessageTemplate,
@@ -210,27 +211,51 @@ export async function generateHorizonAlerts(
   options?: HorizonOptions
 ): Promise<HorizonResult> {
   const today = options?.today || DateTime.now();
-  const maxAlerts = options?.maxAlerts || 20; // Doubled for more horizon events
+  const maxAlerts = options?.maxAlerts || 30; // Large pool for rich horizon
   const useLLM = options?.useLLM !== false; // Default to true
   const errors: string[] = [];
 
-  // Get events from knowledge base
+  // Get alert-triggered events from knowledge base
   const knowledgeAlerts = getAlertsForToday(today, {
     categories: options?.categories,
     includePremium: options?.includePremium,
   });
 
+  // Get upcoming events from knowledge base (next 14 days, regardless of alertDaysBefore)
+  const upcomingKBEvents = getEventsInRange(
+    today.startOf("day"),
+    today.startOf("day").plus({ days: 14 }),
+    {
+      categories: options?.categories,
+      includePremium: options?.includePremium,
+    }
+  ).map(({ event, date }) => ({
+    event,
+    eventDate: date,
+    daysUntil: Math.floor(date.diff(today.startOf("day"), "days").days),
+  }));
+
   // Get events from database (CityEvent table)
   const dbAlerts = await getDatabaseAlerts(today, maxAlerts);
 
-  // Merge both sources, deduplicate by title similarity
+  // Merge all sources, deduplicate by title similarity
   const allAlerts = [...knowledgeAlerts];
-  const knowledgeTitles = new Set(knowledgeAlerts.map(a => a.event.title.toLowerCase()));
+  const seenTitles = new Set(knowledgeAlerts.map(a => a.event.title.toLowerCase()));
 
+  // Add upcoming KB events not already triggered by alerts
+  for (const upcoming of upcomingKBEvents) {
+    const titleLower = upcoming.event.title.toLowerCase();
+    if (!seenTitles.has(titleLower)) {
+      seenTitles.add(titleLower);
+      allAlerts.push(upcoming);
+    }
+  }
+
+  // Add DB events not already present
   for (const dbAlert of dbAlerts) {
-    // Skip if similar title exists in knowledge base
     const titleLower = dbAlert.event.title.toLowerCase();
-    if (!knowledgeTitles.has(titleLower)) {
+    if (!seenTitles.has(titleLower)) {
+      seenTitles.add(titleLower);
       allAlerts.push(dbAlert);
     }
   }

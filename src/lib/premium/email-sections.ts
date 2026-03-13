@@ -31,7 +31,9 @@ import type {
   EnvironmentalCardData,
   FerryCardData,
   CoatCardData,
+  MoneySaverCardData,
 } from "../cards/types";
+import { aggregateMoneySavers } from "../agents/money-saver-agent";
 
 // ============================================================================
 // TYPES
@@ -456,6 +458,53 @@ async function buildFerrySection(): Promise<PremiumSection | null> {
   }
 }
 
+/**
+ * Build money saver section (premium)
+ */
+async function buildMoneySaverSection(): Promise<PremiumSection | null> {
+  try {
+    const result = await aggregateMoneySavers();
+
+    // Only show if there are active deals
+    if (result.totalSavings === 0) return null;
+
+    const cardData: MoneySaverCardData = {
+      totalCount: result.totalSavings,
+      sampleSales: result.sampleSales.count,
+      diningDeals: result.diningDeals.count,
+      freeEvents: result.freeEvents.count,
+      housingLotteries: result.housingLotteries.count,
+      topDeal: result.sampleSales.topItems[0]?.title || result.diningDeals.topItems[0]?.title,
+    };
+    const imgUrl = cardImageUrl("money-saver", cardData);
+
+    const summaryParts: string[] = [];
+    if (result.sampleSales.count > 0) summaryParts.push(`${result.sampleSales.count} sample sales`);
+    if (result.diningDeals.count > 0) summaryParts.push(`${result.diningDeals.count} dining deals`);
+    if (result.freeEvents.count > 0) summaryParts.push(`${result.freeEvents.count} free events`);
+    if (result.housingLotteries.count > 0) summaryParts.push(`${result.housingLotteries.count} housing lotteries`);
+
+    const html = `<div style="margin: 8px 0;">
+      <img src="${imgUrl}" alt="Money Saver: ${summaryParts.join(', ')}"
+        width="600" style="width:100%;max-width:600px;height:auto;display:block;border-radius:12px;" />
+    </div>`;
+
+    const text = `💰 MONEY SAVER\n${result.totalSavings} active deals: ${summaryParts.join(", ")}`;
+
+    return {
+      type: "money_saver",
+      title: "Money Saver",
+      priority: 55,
+      html,
+      text,
+      isPremiumOnly: true,
+    };
+  } catch (error) {
+    console.error("[PremiumSections] Money saver section error:", error);
+    return null;
+  }
+}
+
 // ============================================================================
 // MAIN BUILDERS
 // ============================================================================
@@ -477,6 +526,7 @@ export async function buildPremiumSections(
     trafficSection,
     citiBikeSection,
     oneThingSection,
+    moneySaverSection,
   ] = await Promise.all([
     buildAirportSection(),
     buildCoatUmbrellaSection(),
@@ -486,6 +536,7 @@ export async function buildPremiumSections(
     buildTrafficSection(),
     buildCitiBikeSection(userId),
     buildOneThingSection(),
+    buildMoneySaverSection(),
   ]);
 
   const allSections = [
@@ -497,6 +548,7 @@ export async function buildPremiumSections(
     trafficSection,
     citiBikeSection,
     oneThingSection,
+    moneySaverSection,
   ].filter((s): s is PremiumSection => s !== null);
 
   // Sort by priority

@@ -6,6 +6,7 @@ import { AirportCard } from "@/lib/cards/airport-card";
 import { EnvironmentalCard } from "@/lib/cards/environmental-card";
 import { FerryCard } from "@/lib/cards/ferry-card";
 import { CoatCard } from "@/lib/cards/coat-card";
+import { MoneySaverCard } from "@/lib/cards/money-saver-card";
 import type {
   TrafficCardData,
   CitiBikeCardData,
@@ -13,6 +14,7 @@ import type {
   EnvironmentalCardData,
   FerryCardData,
   CoatCardData,
+  MoneySaverCardData,
 } from "@/lib/cards/types";
 import { join } from "path";
 import { readFile } from "fs/promises";
@@ -42,6 +44,7 @@ const CARD_CONFIGS: Record<string, { width: number; defaultHeight: number }> = {
   environmental: { width: 600, defaultHeight: 200 },
   ferry: { width: 600, defaultHeight: 200 },
   coat: { width: 600, defaultHeight: 220 },
+  "money-saver": { width: 600, defaultHeight: 280 },
 };
 
 function renderCard(type: string, data: unknown): React.ReactElement | null {
@@ -58,6 +61,8 @@ function renderCard(type: string, data: unknown): React.ReactElement | null {
       return <FerryCard data={data as FerryCardData} />;
     case "coat":
       return <CoatCard data={data as CoatCardData} />;
+    case "money-saver":
+      return <MoneySaverCard data={data as MoneySaverCardData} />;
     default:
       return null;
   }
