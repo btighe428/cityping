@@ -1,15 +1,6 @@
 // src/lib/cards/ferry-card.tsx
 import type { FerryCardData } from "./types";
-import { T } from "./tokens";
-
-function severityDotColor(severity: string): string {
-  switch (severity) {
-    case "critical": return T.red;
-    case "major": return T.orange;
-    case "minor": return "#FFD60A";
-    default: return T.label;
-  }
-}
+import { T, severityColor } from "./tokens";
 
 export function FerryCard({ data }: { data: FerryCardData }) {
   const isAllClear = data.alerts.length === 0;
@@ -25,10 +16,12 @@ export function FerryCard({ data }: { data: FerryCardData }) {
         padding: 24,
         backgroundColor: T.cardBg,
         borderRadius: 16,
+        border: `1px solid ${T.border}`,
+        borderTop: `3px solid ${T.accent}`,
         fontFamily: "Inter",
       }}
     >
-      <span style={{ fontSize: 14, color: T.label, textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>
+      <span style={{ fontSize: 14, color: T.label, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600, marginBottom: 16 }}>
         Ferry Status
       </span>
 
@@ -67,7 +60,7 @@ export function FerryCard({ data }: { data: FerryCardData }) {
                 width: 10,
                 height: 10,
                 borderRadius: 5,
-                backgroundColor: severityDotColor(a.severity),
+                backgroundColor: severityColor(a.severity),
                 marginRight: 12,
               }}
             />
@@ -76,7 +69,7 @@ export function FerryCard({ data }: { data: FerryCardData }) {
                 style={{
                   fontSize: 11,
                   fontWeight: 700,
-                  color: T.white,
+                  color: T.accent,
                   backgroundColor: T.barBg,
                   padding: "3px 8px",
                   borderRadius: 4,

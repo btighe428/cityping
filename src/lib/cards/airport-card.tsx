@@ -15,10 +15,12 @@ export function AirportCard({ data }: { data: AirportCardData }) {
         padding: 24,
         backgroundColor: T.cardBg,
         borderRadius: 16,
+        border: `1px solid ${T.border}`,
+        borderTop: `3px solid ${T.accent}`,
         fontFamily: "Inter",
       }}
     >
-      <span style={{ fontSize: 14, color: T.label, textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>
+      <span style={{ fontSize: 14, color: T.label, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600, marginBottom: 16 }}>
         Airport Delays
       </span>
 
@@ -48,7 +50,7 @@ export function AirportCard({ data }: { data: AirportCardData }) {
               {d.airportCode}
             </span>
             <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: T.body }}>{statusText}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: T.primary }}>{statusText}</span>
               {d.reason && (
                 <span style={{ fontSize: 11, color: T.subtle, marginTop: 2 }}>{d.reason}</span>
               )}

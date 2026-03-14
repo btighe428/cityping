@@ -16,7 +16,5 @@ export { newsTier1Task, newsTier2Task, newsTier3Task, newsCurationTask } from ".
 export { serviceAlertsTask } from "./311";
 export { parksTask } from "./parks";
 export { diningTask } from "./dining";
-export { sampleSalesTask } from "./sample-sales";
-export { housingTask } from "./housing";
 export { emergencyTask } from "./emergency";
 export { eventsTask } from "./events";

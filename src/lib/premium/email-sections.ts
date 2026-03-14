@@ -470,19 +470,15 @@ async function buildMoneySaverSection(): Promise<PremiumSection | null> {
 
     const cardData: MoneySaverCardData = {
       totalCount: result.totalSavings,
-      sampleSales: result.sampleSales.count,
       diningDeals: result.diningDeals.count,
       freeEvents: result.freeEvents.count,
-      housingLotteries: result.housingLotteries.count,
-      topDeal: result.sampleSales.topItems[0]?.title || result.diningDeals.topItems[0]?.title,
+      topDeal: result.diningDeals.topItems[0]?.title,
     };
     const imgUrl = cardImageUrl("money-saver", cardData);
 
     const summaryParts: string[] = [];
-    if (result.sampleSales.count > 0) summaryParts.push(`${result.sampleSales.count} sample sales`);
     if (result.diningDeals.count > 0) summaryParts.push(`${result.diningDeals.count} dining deals`);
     if (result.freeEvents.count > 0) summaryParts.push(`${result.freeEvents.count} free events`);
-    if (result.housingLotteries.count > 0) summaryParts.push(`${result.housingLotteries.count} housing lotteries`);
 
     const html = `<div style="margin: 8px 0;">
       <img src="${imgUrl}" alt="Money Saver: ${summaryParts.join(', ')}"

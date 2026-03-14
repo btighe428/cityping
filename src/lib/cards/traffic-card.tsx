@@ -16,12 +16,14 @@ export function TrafficCard({ data }: { data: TrafficCardData }) {
         padding: 24,
         backgroundColor: T.cardBg,
         borderRadius: 16,
+        border: `1px solid ${T.border}`,
+        borderTop: `3px solid ${T.accent}`,
         fontFamily: "Inter",
       }}
     >
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
-        <span style={{ fontSize: 14, color: T.label, textTransform: "uppercase", letterSpacing: 1 }}>
+        <span style={{ fontSize: 14, color: T.label, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600 }}>
           Driving Conditions
         </span>
       </div>
@@ -47,9 +49,10 @@ export function TrafficCard({ data }: { data: TrafficCardData }) {
               height: ringSize,
               borderRadius: ringSize / 2,
               border: `6px solid ${color}`,
+              backgroundColor: T.innerBg,
             }}
           >
-            <span style={{ fontSize: 40, fontWeight: 700, color }}>{data.averageScore}</span>
+            <span style={{ fontSize: 40, fontWeight: 700, color: T.primary }}>{data.averageScore}</span>
           </div>
           <span style={{ fontSize: 13, color: T.body, marginTop: 8 }}>{data.label}</span>
         </div>
@@ -90,7 +93,7 @@ export function TrafficCard({ data }: { data: TrafficCardData }) {
                     }}
                   />
                 </div>
-                <span style={{ fontSize: 12, color: barColor, width: 36, textAlign: "right" }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: T.primary, width: 36, textAlign: "right" }}>
                   {b.score}
                 </span>
               </div>
@@ -113,7 +116,7 @@ export function TrafficCard({ data }: { data: TrafficCardData }) {
         <span style={{ fontSize: 14, fontWeight: 700, color: T.orange }}>
           CRZ ${data.crz.rate.toFixed(2)}
         </span>
-        <span style={{ fontSize: 12, color: T.label, marginLeft: 10 }}>
+        <span style={{ fontSize: 12, color: T.subtle, marginLeft: 10 }}>
           {data.crz.period} rate
         </span>
       </div>

@@ -54,10 +54,8 @@ export interface CoatCardData {
 
 export interface MoneySaverCardData {
   totalCount: number;
-  sampleSales: number;
   diningDeals: number;
   freeEvents: number;
-  housingLotteries: number;
   topDeal?: string;
 }
 

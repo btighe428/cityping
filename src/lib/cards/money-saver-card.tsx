@@ -4,30 +4,24 @@ import { T } from "./tokens";
 
 function categoryColor(category: string): string {
   switch (category) {
-    case "sample_sale": return "#FF9F0A";
-    case "dining_deal": return "#30D158";
-    case "free_event": return "#5E5CE6";
-    case "housing_lottery": return "#FF453A";
+    case "dining_deal": return T.green;
+    case "free_event": return T.accent;
     default: return T.label;
   }
 }
 
 function categoryLabel(category: string): string {
   switch (category) {
-    case "sample_sale": return "Sample Sales";
     case "dining_deal": return "Dining Deals";
     case "free_event": return "Free Events";
-    case "housing_lottery": return "Housing";
     default: return category;
   }
 }
 
 export function MoneySaverCard({ data }: { data: MoneySaverCardData }) {
   const categories = [
-    { key: "sample_sale", count: data.sampleSales, icon: "\uD83C\uDFF7\uFE0F", top: data.topDeal },
-    { key: "dining_deal", count: data.diningDeals, icon: "\uD83C\uDF7D\uFE0F" },
-    { key: "free_event", count: data.freeEvents, icon: "\uD83C\uDF9F\uFE0F" },
-    { key: "housing_lottery", count: data.housingLotteries, icon: "\uD83C\uDFE0" },
+    { key: "dining_deal", count: data.diningDeals, icon: "🍽️", top: data.topDeal },
+    { key: "free_event", count: data.freeEvents, icon: "🎟️" },
   ].filter(c => c.count > 0);
 
   return (
@@ -40,12 +34,14 @@ export function MoneySaverCard({ data }: { data: MoneySaverCardData }) {
         padding: 24,
         backgroundColor: T.cardBg,
         borderRadius: 16,
+        border: `1px solid ${T.border}`,
+        borderTop: `3px solid ${T.accent}`,
         fontFamily: "Inter",
       }}
     >
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
-        <span style={{ fontSize: 14, color: T.label, textTransform: "uppercase", letterSpacing: 1, flex: 1 }}>
+        <span style={{ fontSize: 14, color: T.label, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600, flex: 1 }}>
           Money Saver
         </span>
         <span style={{ fontSize: 24, fontWeight: 700, color: T.green }}>
@@ -71,10 +67,10 @@ export function MoneySaverCard({ data }: { data: MoneySaverCardData }) {
           >
             <span style={{ fontSize: 20, marginRight: 12 }}>{cat.icon}</span>
             <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: T.white }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: T.primary }}>
                 {categoryLabel(cat.key)}
               </span>
-              {cat.top && cat.key === "sample_sale" && (
+              {cat.top && cat.key === "dining_deal" && (
                 <span style={{ fontSize: 11, color: T.subtle, marginTop: 2 }}>
                   {cat.top}
                 </span>

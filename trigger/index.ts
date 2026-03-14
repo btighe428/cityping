@@ -16,7 +16,7 @@
  */
 
 // =============================================================================
-// SCRAPERS (15 tasks)
+// SCRAPERS (13 tasks)
 // =============================================================================
 
 export {
@@ -34,8 +34,6 @@ export {
   serviceAlertsTask,
   parksTask,
   diningTask,
-  sampleSalesTask,
-  housingTask,
   emergencyTask,
   eventsTask,
 } from "./scrapers";
