@@ -1,20 +1,17 @@
 // src/lib/cards/tokens.ts
-// Warm cream/brown editorial design tokens matching email palette
+// Apple Fitness Dark design tokens for card images
 
 export const T = {
-  cardBg: "#FAF7F2",      // Cream (email background)
-  innerBg: "#F5F1E8",     // Slightly darker cream
-  barBg: "#E8DFD1",       // Beige for bar backgrounds
-  primary: "#2d2d2d",     // Dark charcoal headers
-  body: "#5a5a5a",        // Medium gray body
-  label: "#8B7355",       // Warm brown labels
-  subtle: "#A59784",      // Muted brown-gray
-  accent: "#8B7355",      // Warm brown accent
-  green: "#4CAF50",       // Softer green
-  orange: "#E8944A",      // Warmer orange
-  red: "#C0392B",         // Deeper red
+  cardBg: "#1C1C1E",
+  innerBg: "#2C2C2E",
+  green: "#30D158",
+  orange: "#FF9F0A",
+  red: "#FF453A",
   white: "#FFFFFF",
-  border: "#E8DFD1",      // Light beige
+  body: "#EBEBF5",
+  label: "#8E8E93",
+  subtle: "#636366",
+  barBg: "#3A3A3C",
 } as const;
 
 export function scoreColor(score: number): string {
@@ -27,7 +24,7 @@ export function severityColor(severity: string): string {
   switch (severity) {
     case "critical": return T.red;
     case "major": return T.orange;
-    case "minor": return "#D4A843"; // warm yellow
+    case "minor": return "#FFD60A"; // yellow
     default: return T.label;
   }
 }

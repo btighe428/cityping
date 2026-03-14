@@ -3,7 +3,7 @@
  * MONEY SAVER AGENT
  *
  * Pure data aggregation - no LLM, $0 cost.
- * Combines dining deals and free events
+ * Combines sample sales, dining deals, free events, and housing lotteries
  * into a money-saving digest section.
  */
 
@@ -24,8 +24,10 @@ export interface MoneySaverItem {
 }
 
 export interface MoneySaverResult {
+  sampleSales: { count: number; topItems: MoneySaverItem[] };
   diningDeals: { count: number; topItems: MoneySaverItem[] };
   freeEvents: { count: number; topItems: MoneySaverItem[] };
+  housingLotteries: { count: number; topItems: MoneySaverItem[] };
   totalSavings: number; // total active deals/events
   generatedAt: string;
 }
@@ -42,9 +44,11 @@ export async function aggregateMoneySavers(
   const weekAhead = now.plus({ days: 7 }).toJSDate();
 
   // Fetch all data in parallel
-  const [diningDeals, freeDbEvents] = await Promise.all([
+  const [sampleSales, diningDeals, freeDbEvents, housingLotteries] = await Promise.all([
+    fetchSampleSales(todayDate),
     fetchDiningDeals(todayDate),
     fetchFreeEvents(todayDate, weekAhead),
+    fetchHousingLotteries(todayDate),
   ]);
 
   // Get free events from knowledge base
@@ -63,9 +67,13 @@ export async function aggregateMoneySavers(
   const allFreeItems = [...freeDbEvents, ...freeKbItems];
   const uniqueFree = dedup(allFreeItems).slice(0, 5);
 
-  const totalSavings = diningDeals.length + allFreeItems.length;
+  const totalSavings = sampleSales.length + diningDeals.length + allFreeItems.length + housingLotteries.length;
 
   return {
+    sampleSales: {
+      count: sampleSales.length,
+      topItems: sampleSales.slice(0, 3),
+    },
     diningDeals: {
       count: diningDeals.length,
       topItems: diningDeals.slice(0, 3),
@@ -73,6 +81,10 @@ export async function aggregateMoneySavers(
     freeEvents: {
       count: allFreeItems.length,
       topItems: uniqueFree.slice(0, 3),
+    },
+    housingLotteries: {
+      count: housingLotteries.length,
+      topItems: housingLotteries.slice(0, 3),
     },
     totalSavings,
     generatedAt: now.toISO()!,
@@ -82,6 +94,29 @@ export async function aggregateMoneySavers(
 // =============================================================================
 // DATA FETCHERS
 // =============================================================================
+
+async function fetchSampleSales(today: Date): Promise<MoneySaverItem[]> {
+  try {
+    const sales = await prisma.alertEvent.findMany({
+      where: {
+        source: { slug: "sample-sales" },
+        expiresAt: { gte: today },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: { title: true, body: true },
+    });
+
+    return sales.map(s => ({
+      title: s.title,
+      category: "sample_sale",
+      detail: typeof s.body === "string" ? s.body.slice(0, 80) : undefined,
+      icon: "🏷️",
+    }));
+  } catch {
+    return [];
+  }
+}
 
 async function fetchDiningDeals(today: Date): Promise<MoneySaverItem[]> {
   try {
@@ -149,6 +184,29 @@ async function fetchFreeEvents(today: Date, weekAhead: Date): Promise<MoneySaver
     }));
 
     return [...cityItems, ...parkItems];
+  } catch {
+    return [];
+  }
+}
+
+async function fetchHousingLotteries(today: Date): Promise<MoneySaverItem[]> {
+  try {
+    const lotteries = await prisma.alertEvent.findMany({
+      where: {
+        source: { slug: "housing-lotteries" },
+        expiresAt: { gte: today },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: { title: true, body: true },
+    });
+
+    return lotteries.map(l => ({
+      title: l.title,
+      category: "housing_lottery",
+      detail: typeof l.body === "string" ? l.body.slice(0, 80) : undefined,
+      icon: "🏠",
+    }));
   } catch {
     return [];
   }

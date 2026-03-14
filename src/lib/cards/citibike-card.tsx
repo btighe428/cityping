@@ -23,12 +23,10 @@ export function CitiBikeCard({ data }: { data: CitiBikeCardData }) {
         padding: 24,
         backgroundColor: T.cardBg,
         borderRadius: 16,
-        border: `1px solid ${T.border}`,
-        borderTop: `3px solid ${T.accent}`,
         fontFamily: "Inter",
       }}
     >
-      <span style={{ fontSize: 14, color: T.label, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600, marginBottom: 16 }}>
+      <span style={{ fontSize: 14, color: T.label, textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>
         CitiBike Status
       </span>
 
@@ -51,15 +49,15 @@ export function CitiBikeCard({ data }: { data: CitiBikeCardData }) {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: T.primary }}>{icon} Station</span>
-              <span style={{ fontSize: 11, color: T.subtle, marginLeft: 10 }}>{s.name}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>{icon} Station</span>
+              <span style={{ fontSize: 11, color: T.label, marginLeft: 10 }}>{s.name}</span>
             </div>
 
             <div style={{ display: "flex", alignItems: "center" }}>
               {/* Bikes */}
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 60 }}>
                 <span style={{ fontSize: 28, fontWeight: 700, color: bikeColor }}>{s.bikesAvailable}</span>
-                <span style={{ fontSize: 10, color: T.subtle, textTransform: "uppercase" }}>bikes</span>
+                <span style={{ fontSize: 10, color: T.label, textTransform: "uppercase" }}>bikes</span>
               </div>
 
               {/* Fill bar */}
@@ -89,7 +87,7 @@ export function CitiBikeCard({ data }: { data: CitiBikeCardData }) {
               {/* Docks */}
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 60 }}>
                 <span style={{ fontSize: 28, fontWeight: 700, color: dockColor }}>{s.docksAvailable}</span>
-                <span style={{ fontSize: 10, color: T.subtle, textTransform: "uppercase" }}>docks</span>
+                <span style={{ fontSize: 10, color: T.label, textTransform: "uppercase" }}>docks</span>
               </div>
             </div>
           </div>

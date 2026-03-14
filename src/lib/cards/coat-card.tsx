@@ -3,8 +3,8 @@ import type { CoatCardData } from "./types";
 import { T } from "./tokens";
 
 export function CoatCard({ data }: { data: CoatCardData }) {
-  const emoji = data.coat === "heavy" ? "🧥" : data.coat === "light" ? "🧤" : "👕";
-  const umbrellaEmoji = data.umbrella ? " ☔" : "";
+  const emoji = data.coat === "heavy" ? "\u{1F9E5}" : data.coat === "light" ? "\u{1F9E4}" : "\u{1F455}";
+  const umbrellaEmoji = data.umbrella ? " \u2614" : "";
 
   return (
     <div
@@ -16,12 +16,10 @@ export function CoatCard({ data }: { data: CoatCardData }) {
         padding: 24,
         backgroundColor: T.cardBg,
         borderRadius: 16,
-        border: `1px solid ${T.border}`,
-        borderTop: `3px solid ${T.accent}`,
         fontFamily: "Inter",
       }}
     >
-      <span style={{ fontSize: 14, color: T.label, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600, marginBottom: 16 }}>
+      <span style={{ fontSize: 14, color: T.label, textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>
         What to Wear
       </span>
 
@@ -29,7 +27,7 @@ export function CoatCard({ data }: { data: CoatCardData }) {
       <div style={{ display: "flex", alignItems: "center", flex: 1 }}>
         <span style={{ fontSize: 56, marginRight: 20 }}>{emoji}{umbrellaEmoji}</span>
         <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
-          <span style={{ fontSize: 18, fontWeight: 700, color: T.primary, lineHeight: 1.3 }}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: T.white, lineHeight: 1.3 }}>
             {data.summary}
           </span>
           <span style={{ fontSize: 13, color: T.subtle, marginTop: 4 }}>{data.conditions}</span>
@@ -48,14 +46,14 @@ export function CoatCard({ data }: { data: CoatCardData }) {
           marginTop: 8,
         }}
       >
-        <span style={{ fontSize: 13, color: T.primary, fontWeight: 600 }}>
+        <span style={{ fontSize: 13, color: T.body }}>
           {data.temperature}°F
         </span>
         <span style={{ fontSize: 12, color: T.subtle }}>
           Feels like {data.feelsLike}°F
         </span>
         {data.precipProbability > 10 && (
-          <span style={{ fontSize: 12, color: T.orange, fontWeight: 600 }}>
+          <span style={{ fontSize: 12, color: T.orange }}>
             Rain {data.precipProbability}%
           </span>
         )}

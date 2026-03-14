@@ -158,6 +158,26 @@ export const DATA_SOURCES: DataSource[] = [
     criticalForDigest: true,
   },
 
+  // Deals & Events
+  {
+    id: "sample_sales",
+    name: "Sample Sales",
+    type: "scraper",
+    endpoint: "/api/jobs/ingest/sample-sales",
+    expectedFrequency: "daily",
+    minItemsExpected: 1,
+    criticalForDigest: false,
+  },
+  {
+    id: "housing_lottery",
+    name: "Housing Lotteries",
+    type: "scraper",
+    endpoint: "/api/jobs/ingest/housing-lotteries",
+    expectedFrequency: "daily",
+    minItemsExpected: 0,
+    criticalForDigest: false,
+  },
+
   // City Services
   {
     id: "nyc_311",

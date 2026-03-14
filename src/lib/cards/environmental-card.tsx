@@ -3,6 +3,8 @@ import type { EnvironmentalCardData } from "./types";
 import { T } from "./tokens";
 
 export function EnvironmentalCard({ data }: { data: EnvironmentalCardData }) {
+  const hasBoth = data.pollen && data.uv;
+
   return (
     <div
       style={{
@@ -13,12 +15,10 @@ export function EnvironmentalCard({ data }: { data: EnvironmentalCardData }) {
         padding: 24,
         backgroundColor: T.cardBg,
         borderRadius: 16,
-        border: `1px solid ${T.border}`,
-        borderTop: `3px solid ${T.accent}`,
         fontFamily: "Inter",
       }}
     >
-      <span style={{ fontSize: 14, color: T.label, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600, marginBottom: 16 }}>
+      <span style={{ fontSize: 14, color: T.label, textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>
         Environmental
       </span>
 
@@ -36,10 +36,10 @@ export function EnvironmentalCard({ data }: { data: EnvironmentalCardData }) {
               padding: 16,
             }}
           >
-            <span style={{ fontSize: 10, color: T.subtle, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>
+            <span style={{ fontSize: 10, color: T.label, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>
               Pollen ({data.pollen.type})
             </span>
-            <span style={{ fontSize: 26, fontWeight: 700, color: T.accent }}>
+            <span style={{ fontSize: 26, fontWeight: 700, color: T.green }}>
               {data.pollen.category}
             </span>
           </div>
@@ -58,7 +58,7 @@ export function EnvironmentalCard({ data }: { data: EnvironmentalCardData }) {
               padding: 16,
             }}
           >
-            <span style={{ fontSize: 10, color: T.subtle, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>
+            <span style={{ fontSize: 10, color: T.label, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>
               UV Index
             </span>
             <span style={{ fontSize: 32, fontWeight: 700, color: T.orange }}>

@@ -15,15 +15,17 @@
  * - Rollback/retry logic for transient failures
  * - Alerting on data quality degradation
  *
- * Data Sources (8 total):
+ * Data Sources (10 total):
  * 1. MTA Subway Alerts (real-time, 5-min refresh)
- * 2. NYC Events (aggregated from multiple sources)
- * 3. News Articles (RSS feeds: Gothamist, THE CITY, Patch)
- * 4. Air Quality (AirNow API, 6-hour refresh)
- * 5. 311 Service Alerts (NYC Open Data, 4-hour refresh)
- * 6. Parks Events (NYC Parks calendar)
- * 7. Dining Deals (RSS aggregation)
- * 8. Weather (NWS API, on-demand)
+ * 2. Sample Sales (daily scrape from 260samplesale, etc.)
+ * 3. Housing Lotteries (NYC Open Data, 8-hour refresh)
+ * 4. NYC Events (aggregated from multiple sources)
+ * 5. News Articles (RSS feeds: Gothamist, THE CITY, Patch)
+ * 6. Air Quality (AirNow API, 6-hour refresh)
+ * 7. 311 Service Alerts (NYC Open Data, 4-hour refresh)
+ * 8. Parks Events (NYC Parks calendar)
+ * 9. Dining Deals (RSS aggregation)
+ * 10. Weather (NWS API, on-demand)
  *
  * Quality Guarantees:
  * - No email sent without minimum data thresholds
@@ -105,6 +107,22 @@ export const DATA_SOURCES: Record<string, DataSourceConfig> = {
     critical: false,
     validator: validateFerryAlerts,
   },
+  sample_sales: {
+    name: "Sample Sales",
+    endpoint: "/api/jobs/ingest/sample-sales",
+    expectedFreshness: 24 * 60, // 24 hours
+    minItemsRequired: 1,
+    critical: false,
+    validator: validateSampleSales,
+  },
+  housing_lotteries: {
+    name: "Housing Lotteries",
+    endpoint: "/api/jobs/ingest/housing-lotteries",
+    expectedFreshness: 12 * 60, // 12 hours
+    minItemsRequired: 0,
+    critical: false,
+    validator: validateHousingLotteries,
+  },
   news_articles: {
     name: "News Articles",
     endpoint: "/api/jobs/ingest/news",
@@ -172,6 +190,16 @@ function validateMtaAlerts(data: unknown): ValidationResult {
 
   // Query actual data from DB
   // Validation happens during orchestration with real DB queries
+  return result;
+}
+
+function validateSampleSales(data: unknown): ValidationResult {
+  const result: ValidationResult = { valid: true, errors: [], warnings: [], itemCount: 0 };
+  return result;
+}
+
+function validateHousingLotteries(data: unknown): ValidationResult {
+  const result: ValidationResult = { valid: true, errors: [], warnings: [], itemCount: 0 };
   return result;
 }
 
@@ -253,6 +281,42 @@ export async function checkDataFreshness(): Promise<Map<string, DataSourceStatus
       }
     }
   }
+
+  // Check sample sales (module: food or sample-sales)
+  const sampleSalesConfig = DATA_SOURCES.sample_sales;
+  const sampleSalesStats = moduleStats.get("food") || moduleStats.get("sample-sales");
+  const sampleSalesLastUpdated = sampleSalesStats?.lastUpdated || null;
+  const sampleSalesStale = !sampleSalesLastUpdated ||
+    now.diff(DateTime.fromJSDate(sampleSalesLastUpdated), "minutes").minutes > sampleSalesConfig.expectedFreshness;
+
+  statuses.set("sample_sales", {
+    name: sampleSalesConfig.name,
+    lastUpdated: sampleSalesLastUpdated,
+    itemCount: sampleSalesStats?.count || 0,
+    isStale: sampleSalesStale,
+    isBelowThreshold: (sampleSalesStats?.count || 0) < sampleSalesConfig.minItemsRequired,
+    errors: [],
+    warnings: sampleSalesStale ? ["Data is stale"] : [],
+    healthy: !sampleSalesStale && (sampleSalesStats?.count || 0) >= sampleSalesConfig.minItemsRequired,
+  });
+
+  // Check housing lotteries
+  const housingConfig = DATA_SOURCES.housing_lotteries;
+  const housingStats = moduleStats.get("housing");
+  const housingLastUpdated = housingStats?.lastUpdated || null;
+  const housingStale = !housingLastUpdated ||
+    now.diff(DateTime.fromJSDate(housingLastUpdated), "minutes").minutes > housingConfig.expectedFreshness;
+
+  statuses.set("housing_lotteries", {
+    name: housingConfig.name,
+    lastUpdated: housingLastUpdated,
+    itemCount: housingStats?.count || 0,
+    isStale: housingStale,
+    isBelowThreshold: false, // Housing can have 0
+    errors: [],
+    warnings: housingStale ? ["Data is stale"] : [],
+    healthy: !housingStale,
+  });
 
   // Check news articles
   const newsConfig = DATA_SOURCES.news_articles;
