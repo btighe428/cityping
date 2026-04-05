@@ -26,5 +26,34 @@ Allow: /faq
 Allow: /terms
 Allow: /privacy
 
+# AI Crawlers — explicitly permitted for citation eligibility
+User-agent: GPTBot
+Allow: /
+Disallow: /api/
+Disallow: /dashboard/
+Disallow: /m/
+Disallow: /preferences/
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /api/
+Disallow: /dashboard/
+Disallow: /m/
+Disallow: /preferences/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /api/
+Disallow: /dashboard/
+Disallow: /m/
+Disallow: /preferences/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /api/
+Disallow: /dashboard/
+Disallow: /m/
+Disallow: /preferences/
+
 # Sitemap location
 Sitemap: https://cityping.net/sitemap.xml
