@@ -70,7 +70,6 @@ async function checkDatabaseHealth(): Promise<ServiceHealth> {
   const name = "database";
 
   try {
-    // Simple connectivity test with timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error("Database connection timeout")), CONFIG.connectionTimeout);
     });
@@ -80,40 +79,38 @@ async function checkDatabaseHealth(): Promise<ServiceHealth> {
     await Promise.race([queryPromise, timeoutPromise]);
     const latencyMs = Date.now() - startTime;
 
-    // Also check if we can query actual data
-    const dataCheckStart = Date.now();
-    const countResult = await Promise.race([
-      prisma.alertEvent.count(),
-      new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("Query timeout")), CONFIG.queryTimeout);
-      }),
-    ]);
-
-    const dataLatency = Date.now() - dataCheckStart;
-
     return {
       name,
-      status: dataLatency > 3000 ? "degraded" : "healthy",
+      status: latencyMs > 3000 ? "degraded" : "healthy",
       latencyMs,
       lastCheck: DateTime.now().toISO()!,
       details: {
-        queryLatencyMs: dataLatency,
-        sampleCount: countResult,
+        queryLatencyMs: latencyMs,
       },
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    const lower = errorMessage.toLowerCase();
 
-    // Detect specific failure modes
-    let diagnosis = "Unknown database error";
-    if (errorMessage.includes("Can't reach database server")) {
+    let diagnosis: string;
+    if (
+      lower.includes("authentication failed") ||
+      lower.includes("password authentication") ||
+      lower.includes("invalid database credentials")
+    ) {
+      diagnosis = "DATABASE CREDENTIALS INVALID - update DATABASE_URL in Vercel env vars";
+    } else if (
+      lower.includes("can't reach database server") ||
+      lower.includes("cannot reach database server")
+    ) {
       diagnosis = "DATABASE UNREACHABLE - likely Supabase project is paused or down";
-    } else if (errorMessage.includes("connection refused")) {
+    } else if (lower.includes("connection refused")) {
       diagnosis = "DATABASE CONNECTION REFUSED - server may be restarting";
-    } else if (errorMessage.includes("timeout")) {
+    } else if (lower.includes("timeout") || lower.includes("timed out")) {
       diagnosis = "DATABASE TIMEOUT - server overloaded or network issue";
-    } else if (errorMessage.includes("authentication")) {
-      diagnosis = "DATABASE AUTH FAILED - credentials may have changed";
+    } else {
+      // Surface the actual error so the alert email is actionable.
+      diagnosis = `Database error: ${errorMessage.slice(0, 240)}`;
     }
 
     return {
@@ -137,7 +134,8 @@ async function checkEmailHealth(): Promise<ServiceHealth> {
   const startTime = Date.now();
   const name = "email";
 
-  if (!process.env.RESEND_API_KEY) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
     return {
       name,
       status: "down",
@@ -148,36 +146,62 @@ async function checkEmailHealth(): Promise<ServiceHealth> {
   }
 
   try {
-    const resend = new Resend(process.env.RESEND_API_KEY);
-
-    // Test API connectivity by listing emails (read-only operation)
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error("Email API timeout")), CONFIG.connectionTimeout);
+    // Probe Resend via a lightweight GET. Send-only keys (the kind we use for
+    // transactional sends) intentionally return 401 with the message
+    // "This API key is restricted to only send emails" — that response proves
+    // the key is valid AND authorized to send, which is all we need. Full-access
+    // keys return 200. Only treat real auth failures / network errors as bad.
+    const response = await fetch("https://api.resend.com/domains", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(CONFIG.connectionTimeout),
     });
-
-    const apiPromise = resend.emails.list();
-    const result = await Promise.race([apiPromise, timeoutPromise]);
 
     const latencyMs = Date.now() - startTime;
 
-    if (result.error) {
+    if (response.ok) {
       return {
         name,
-        status: "degraded",
+        status: "healthy",
         latencyMs,
         lastCheck: DateTime.now().toISO()!,
-        error: result.error.message,
+        details: { keyType: "full_access" },
+      };
+    }
+
+    let body: { message?: string; name?: string } = {};
+    try {
+      body = (await response.json()) as { message?: string; name?: string };
+    } catch {
+      /* non-JSON body; fall through with empty message */
+    }
+    const message = body.message || "";
+
+    if (response.status === 401 && /restricted to only send emails/i.test(message)) {
+      return {
+        name,
+        status: "healthy",
+        latencyMs,
+        lastCheck: DateTime.now().toISO()!,
+        details: { keyType: "sending_only" },
+      };
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return {
+        name,
+        status: "down",
+        latencyMs,
+        lastCheck: DateTime.now().toISO()!,
+        error: message || "Resend API key invalid or unauthorized",
       };
     }
 
     return {
       name,
-      status: "healthy",
+      status: "degraded",
       latencyMs,
       lastCheck: DateTime.now().toISO()!,
-      details: {
-        recentEmailCount: result.data?.data?.length || 0,
-      },
+      error: message || `Resend API returned HTTP ${response.status}`,
     };
   } catch (error) {
     return {
@@ -308,12 +332,21 @@ export async function runInfrastructureCheck(): Promise<SystemHealth> {
   const recommendations: string[] = [];
 
   if (database.status === "down") {
-    recommendations.push(
-      "🚨 CRITICAL: Database is DOWN - check Supabase dashboard, may need to unpause project"
-    );
-    recommendations.push(
-      "   → Go to https://supabase.com/dashboard and restore/unpause your project"
-    );
+    if (database.error?.includes("CREDENTIALS INVALID")) {
+      recommendations.push(
+        "🚨 CRITICAL: Database credentials invalid - DATABASE_URL in Vercel env is wrong"
+      );
+      recommendations.push(
+        "   → Supabase Dashboard > Project Settings > Database > reset password, then update Vercel env DATABASE_URL"
+      );
+    } else {
+      recommendations.push(
+        "🚨 CRITICAL: Database is DOWN - check Supabase dashboard, may need to unpause project"
+      );
+      recommendations.push(
+        "   → Go to https://supabase.com/dashboard and restore/unpause your project"
+      );
+    }
   }
 
   if (email.status === "down") {
